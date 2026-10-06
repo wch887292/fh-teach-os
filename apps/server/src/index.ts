@@ -9,7 +9,6 @@ import { authRouter } from './modules/auth';
 import { auditMiddleware, auditRouter } from './middleware/audit';
 import { riskMiddleware } from './middleware/risk';
 import { authMiddleware, requireRole } from './middleware/auth';
-import { authMiddleware, requireRole } from './middleware/auth';
 
 // ── 启动校验：JWT_SECRET 必须设置，secret 不入库不入 git ────────────────
 if (!process.env.JWT_SECRET) {

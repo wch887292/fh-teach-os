@@ -199,15 +199,19 @@ db.exec(`
   );
 `);
 
-// 开发种子密码（bcryptjs cost 10 硬编码 hash）：
-// admin / Admin@2026（role=admin）、sales01 / Sales@2026（role=sales）、teacher01 / Teacher@2026（role=teacher）
+// 开发种子账号（bcryptjs cost 10 加密，密码来源 data/dev-seed-passwords.txt，该文件已被 gitignore 不入库）
 // ⚠️ 正式部署必须修改密码或重新生成 hash，勿将 seed hash 用于生产环境
-// 按 username 逐条 ensure：不存在才插入，避免已有 seed 时重复写入
-const seedUsers: Array<{ tenantId: number; username: string; passwordHash: string; role: string }> = [
-  { tenantId: 1, username: 'admin',     passwordHash: '$2b$10$k.ikp/iuz98q5tG7UviHRuFdZ3a8Gn2bbpme2x6cYwB6R8vL2ZQOG', role: 'admin' },
-  { tenantId: 1, username: 'sales01',   passwordHash: '$2b$10$q.43RMn/cn.Rg74FueOAPOSBmGD6NYUeZdhMR0JugLm04Gj3aZRQK', role: 'sales' },
-  { tenantId: 1, username: 'teacher01', passwordHash: '$2b$10$NaiT.PifbDyDboRBhmAX6evLIayobwls4JT20scmnH2Bc.Ka2V5UG', role: 'teacher' },
+// 按 username 逐条 ensure：已存在则跳过，不存在才插入（支持增量新增种子用户）
+// 三条种子：admin(admin)、sales01(sales)、teacher01(teacher)，tenantId 均为 1
+const seedUsers: Array<{ username: string; tenantId: number; passwordHash: string; role: string }> = [
+  // admin / Admin@2026
+  { username: 'admin', tenantId: 1, role: 'admin', passwordHash: '$2b$10$1YHcx72yShefV74m0RoKr.jQ5fpkP9NEK2bmQkOPwGNQQefGrMM8W' },
+  // sales01 / Sales@2026
+  { username: 'sales01', tenantId: 1, role: 'sales', passwordHash: '$2b$10$kkB6SnjBBZnMP8m1Oz9LRubOHjiRRdrhBJuFpwK0RLwS/XJMTc1wu' },
+  // teacher01 / Teacher@2026
+  { username: 'teacher01', tenantId: 1, role: 'teacher', passwordHash: '$2b$10$8UAE5vGG9GO6QomZTxHjL.N.kiqQGwtdPKFG8pc.4sjGOajzafExu' },
 ];
+
 for (const seed of seedUsers) {
   const exists = db
     .prepare('SELECT 1 FROM users WHERE username = ?')
