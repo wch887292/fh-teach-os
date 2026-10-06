@@ -26,6 +26,15 @@ export default function App() {
       .finally(() => setLoading(false));
   }, []);
 
+  const items = (
+    modules.length > 0
+      ? modules.map((mod) => ({
+          key: typeof mod === 'string' ? mod : mod.name,
+          status: typeof mod === 'string' ? (MODULE_META[mod]?.online ? 'online' : 'planned') : mod.status,
+        }))
+      : Object.entries(MODULE_META).map(([key, meta]) => ({ key, status: meta.online ? 'online' : 'planned' }))
+  );
+
   return (
     <div style={styles.page}>
       <header style={styles.header}>
@@ -43,12 +52,12 @@ export default function App() {
         <div style={styles.loading}>加载中…</div>
       ) : (
         <div style={styles.grid}>
-          {(modules.length > 0 ? modules : Object.keys(MODULE_META)).map((mod) => {
-            const m = MODULE_META[mod] || { name: mod, description: '', online: false };
-            const status = connected ? m.online : false;
+          {items.map((item) => {
+            const m = MODULE_META[item.key] || { name: item.key, description: '' };
+            const status = connected && item.status === 'online';
             return (
               <div
-                key={mod}
+                key={item.key}
                 style={{
                   ...styles.card,
                   borderLeft: `4px solid ${status ? '#22c55e' : '#f59e0b'}`,
@@ -67,12 +76,18 @@ export default function App() {
                   </span>
                 </div>
                 <p style={styles.cardDesc}>{m.description}</p>
-                <code style={styles.code}>{mod}</code>
+                <code style={styles.code}>{item.key}</code>
               </div>
             );
           })}
         </div>
       )}
+
+      <footer style={styles.footer}>
+        <p style={styles.footerLine}>晋江市飞虹智科技企业管理有限公司</p>
+        <p style={styles.footerLine}>飞扬企源研发中心</p>
+        <p style={styles.footerLine}>负责人：吴赐虹</p>
+      </footer>
     </div>
   );
 }
@@ -164,5 +179,16 @@ const styles = {
     padding: '2px 6px',
     borderRadius: 4,
     width: 'fit-content',
+  },
+  footer: {
+    marginTop: 40,
+    paddingTop: 16,
+    borderTop: '1px solid #e2e8f0',
+    textAlign: 'center',
+  },
+  footerLine: {
+    margin: '2px 0',
+    fontSize: 12,
+    color: '#94a3b8',
   },
 };
