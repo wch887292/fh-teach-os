@@ -11,8 +11,10 @@ interface DailyMetric {
 
 export const dataRouter = Router();
 
-function fetchAllSeries(): DailyMetric[] {
-  const rows = db.prepare('SELECT id, date, newLeads, revenue, activeStudents FROM series ORDER BY id ASC').all() as unknown as Record<string, unknown>[];
+function fetchAllSeries(tenantId: number): DailyMetric[] {
+  const rows = db.prepare(
+    'SELECT id, date, newLeads, revenue, activeStudents FROM series WHERE tenantId = ?'
+  ).all(tenantId) as unknown as Record<string, unknown>[];
   return rows.map((r) => ({
     id: r.id as number,
     date: (r.date as string) ?? '',
@@ -22,11 +24,19 @@ function fetchAllSeries(): DailyMetric[] {
   }));
 }
 
-dataRouter.get('/series', (_req, res) => {
-  res.json(fetchAllSeries());
+dataRouter.get('/series', (req, res) => {
+  if (!req.auth) {
+    res.status(401).json({ error: '未认证，请先登录' });
+    return;
+  }
+  res.json(fetchAllSeries(req.auth.tenantId));
 });
 
 dataRouter.post('/series', (req, res) => {
+  if (!req.auth) {
+    res.status(401).json({ error: '未认证，请先登录' });
+    return;
+  }
   const { date, newLeads, revenue, activeStudents } = req.body || {};
 
   if (typeof date !== 'string' || date.trim() === '') {
@@ -44,9 +54,9 @@ dataRouter.post('/series', (req, res) => {
   }
 
   const stmt = db.prepare(
-    `INSERT INTO series (date, newLeads, revenue, activeStudents) VALUES (?, ?, ?, ?)`
+    `INSERT INTO series (date, newLeads, revenue, activeStudents, tenantId) VALUES (?, ?, ?, ?, ?)`
   );
-  const result = stmt.run(date, newLeadsNum, revenueNum, activeStudentsNum);
+  const result = stmt.run(date, newLeadsNum, revenueNum, activeStudentsNum, req.auth.tenantId);
   const id = Number(result.lastInsertRowid);
   const record: DailyMetric = {
     id,
@@ -58,10 +68,14 @@ dataRouter.post('/series', (req, res) => {
   res.status(201).json(record);
 });
 
-dataRouter.get('/summary', (_req, res) => {
+dataRouter.get('/summary', (req, res) => {
+  if (!req.auth) {
+    res.status(401).json({ error: '未认证，请先登录' });
+    return;
+  }
   const row = db.prepare(
-    `SELECT COUNT(*) as cnt, COALESCE(SUM(newLeads), 0) as totalLeads, COALESCE(SUM(revenue), 0) as totalRevenue, COALESCE(SUM(activeStudents), 0) as totalActive FROM series`
-  ).get() as unknown as { cnt: number; totalLeads: number; totalRevenue: number; totalActive: number };
+    `SELECT COUNT(*) as cnt, COALESCE(SUM(newLeads), 0) as totalLeads, COALESCE(SUM(revenue), 0) as totalRevenue, COALESCE(SUM(activeStudents), 0) as totalActive FROM series WHERE tenantId = ?`
+  ).get(req.auth.tenantId) as unknown as { cnt: number; totalLeads: number; totalRevenue: number; totalActive: number };
   const totalDays = row.cnt;
   const totalLeads = Number(row.totalLeads ?? 0);
   const totalRevenue = Number(row.totalRevenue ?? 0);

@@ -225,3 +225,46 @@ for (const seed of seedUsers) {
     );
   }
 }
+
+// ── 多租户：六张业务表追加 tenantId 列（仅在不存在时 ALTER）────────────────
+function ensureColumn(table: string, column: string, definition: string): void {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all() as unknown as { name: string }[];
+  if (!cols.some((c) => c.name === column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+}
+
+ensureColumn('leads', 'tenantId', 'INTEGER NOT NULL DEFAULT 1');
+ensureColumn('questions', 'tenantId', 'INTEGER NOT NULL DEFAULT 1');
+ensureColumn('records', 'tenantId', 'INTEGER NOT NULL DEFAULT 1');
+ensureColumn('series', 'tenantId', 'INTEGER NOT NULL DEFAULT 1');
+ensureColumn('channels', 'tenantId', 'INTEGER NOT NULL DEFAULT 1');
+ensureColumn('courses', 'tenantId', 'INTEGER NOT NULL DEFAULT 1');
+
+// ── 多租户：tenants 逐条 ensure（已存在则跳过，支持增量新增）────────────────
+const seedTenants: Array<{ name: string; status: string }> = [
+  { name: '飞虹智总部', status: '启用中' },
+  { name: '测试租户二', status: '启用中' },
+];
+
+for (const seed of seedTenants) {
+  const exists = db
+    .prepare('SELECT 1 FROM tenants WHERE name = ?')
+    .get(seed.name) as unknown as { 1: 1 } | undefined;
+  if (!exists) {
+    db.prepare('INSERT INTO tenants (name, status) VALUES (?, ?)').run(seed.name, seed.status);
+  }
+}
+
+// ── 多租户：追加 tenant02 种子用户（租户二，角色 admin）────────────────────
+// 密码来源 data/dev-seed-passwords.txt 里 tenant02 行：tenant02=Admin@2026,role=admin,tenantId=2
+// bcryptjs cost 10 加密，⚠️ 正式部署必须修改密码或重新生成 hash
+const tenant02Hash = '$2b$10$R83y34ikFBLmvKwEMP4kjeY2mZdLY8SjOqjviOvDM6HCS3HyL.Crm';
+const tenant02Exists = db
+  .prepare('SELECT 1 FROM users WHERE username = ?')
+  .get('tenant02') as unknown as { 1: 1 } | undefined;
+if (!tenant02Exists) {
+  db.prepare(
+    'INSERT INTO users (tenantId, username, passwordHash, role) VALUES (?, ?, ?, ?)'
+  ).run(2, 'tenant02', tenant02Hash, 'admin');
+}

@@ -17,10 +17,10 @@ const VALID_STATUSES: CourseStatus[] = ['招生中', '已满', '已结课'];
 
 export const courseRouter = Router();
 
-function fetchAllCourses(): Course[] {
+function fetchAllCourses(tenantId: number): Course[] {
   const rows = db.prepare(
-    'SELECT id, name, teacher, price, totalStudents, capacity, status FROM courses ORDER BY id ASC'
-  ).all() as unknown as Record<string, unknown>[];
+    'SELECT id, name, teacher, price, totalStudents, capacity, status FROM courses WHERE tenantId = ?'
+  ).all(tenantId) as unknown as Record<string, unknown>[];
   return rows.map((r) => ({
     id: r.id as number,
     name: (r.name as string) ?? '',
@@ -32,11 +32,19 @@ function fetchAllCourses(): Course[] {
   }));
 }
 
-courseRouter.get('/courses', (_req, res) => {
-  res.json(fetchAllCourses());
+courseRouter.get('/courses', (req, res) => {
+  if (!req.auth) {
+    res.status(401).json({ error: '未认证，请先登录' });
+    return;
+  }
+  res.json(fetchAllCourses(req.auth.tenantId));
 });
 
 courseRouter.post('/courses', (req, res) => {
+  if (!req.auth) {
+    res.status(401).json({ error: '未认证，请先登录' });
+    return;
+  }
   const { name, teacher, price, totalStudents, capacity } = req.body || {};
 
   if (typeof name !== 'string' || name.trim() === '') {
@@ -44,15 +52,16 @@ courseRouter.post('/courses', (req, res) => {
     return;
   }
 
-  const priceNum = price !== undefined && price !== null && price !== ''
-    ? Number(price)
-    : 0;
-  const totalStudentsNum = totalStudents !== undefined && totalStudents !== null && totalStudents !== ''
-    ? Number(totalStudents)
-    : 0;
-  const capacityNum = capacity !== undefined && capacity !== null && capacity !== ''
-    ? Number(capacity)
-    : 0;
+  const priceNum =
+    price !== undefined && price !== null && price !== '' ? Number(price) : 0;
+  const totalStudentsNum =
+    totalStudents !== undefined && totalStudents !== null && totalStudents !== ''
+      ? Number(totalStudents)
+      : 0;
+  const capacityNum =
+    capacity !== undefined && capacity !== null && capacity !== ''
+      ? Number(capacity)
+      : 0;
 
   if (Number.isNaN(priceNum) || Number.isNaN(totalStudentsNum) || Number.isNaN(capacityNum)) {
     res.status(400).json({ error: 'price / totalStudents / capacity 必须为有效数字' });
@@ -62,9 +71,16 @@ courseRouter.post('/courses', (req, res) => {
   const teacherStr = typeof teacher === 'string' ? teacher : '';
 
   const stmt = db.prepare(
-    `INSERT INTO courses (name, teacher, price, totalStudents, capacity, status) VALUES (?, ?, ?, ?, ?, '招生中')`
+    `INSERT INTO courses (name, teacher, price, totalStudents, capacity, status, tenantId) VALUES (?, ?, ?, ?, ?, '招生中', ?)`
   );
-  const result = stmt.run(name, teacherStr, priceNum, totalStudentsNum, capacityNum);
+  const result = stmt.run(
+    name,
+    teacherStr,
+    priceNum,
+    totalStudentsNum,
+    capacityNum,
+    req.auth.tenantId
+  );
   const id = Number(result.lastInsertRowid);
   const course: Course = {
     id,
@@ -79,8 +95,15 @@ courseRouter.post('/courses', (req, res) => {
 });
 
 courseRouter.patch('/courses/:id/status', (req, res) => {
+  if (!req.auth) {
+    res.status(401).json({ error: '未认证，请先登录' });
+    return;
+  }
   const idNum = Number(req.params.id);
-  const found = db.prepare('SELECT id FROM courses WHERE id = ?').get(idNum);
+  const tenantId = req.auth.tenantId;
+  const found = db
+    .prepare('SELECT id FROM courses WHERE id = ? AND tenantId = ?')
+    .get(idNum, tenantId);
   if (!found) {
     res.status(404).json({ error: '课程不存在' });
     return;
@@ -90,10 +113,16 @@ courseRouter.patch('/courses/:id/status', (req, res) => {
     res.status(400).json({ error: `status 必须是 ${VALID_STATUSES.join(' / ')}` });
     return;
   }
-  db.prepare('UPDATE courses SET status = ? WHERE id = ?').run(status, idNum);
-  const updated = db.prepare(
-    'SELECT id, name, teacher, price, totalStudents, capacity, status FROM courses WHERE id = ?'
-  ).get(idNum) as unknown as Record<string, unknown>;
+  db.prepare('UPDATE courses SET status = ? WHERE id = ? AND tenantId = ?').run(
+    status,
+    idNum,
+    tenantId
+  );
+  const updated = db
+    .prepare(
+      'SELECT id, name, teacher, price, totalStudents, capacity, status FROM courses WHERE id = ? AND tenantId = ?'
+    )
+    .get(idNum, tenantId) as unknown as Record<string, unknown>;
   res.json({
     id: updated.id,
     name: updated.name ?? '',
@@ -105,21 +134,26 @@ courseRouter.patch('/courses/:id/status', (req, res) => {
   });
 });
 
-courseRouter.get('/stats', (_req, res) => {
-  const rows = db.prepare(
-    'SELECT status, price, totalStudents FROM courses'
-  ).all() as unknown as { status: string; price: number; totalStudents: number }[];
+courseRouter.get('/stats', (req, res) => {
+  if (!req.auth) {
+    res.status(401).json({ error: '未认证，请先登录' });
+    return;
+  }
+  const tenantId = req.auth.tenantId;
+  const rows = db
+    .prepare('SELECT status, price, totalStudents FROM courses WHERE tenantId = ?')
+    .all(tenantId) as unknown as { status: string; price: number; totalStudents: number }[];
   const total = rows.length;
   const byStatus: Record<string, number> = {};
   for (const s of VALID_STATUSES) byStatus[s] = 0;
-  let totalStudentsSum = 0;
+  let totalStudents = 0;
   let priceSum = 0;
   for (const row of rows) {
     const st = (row.status as CourseStatus) ?? '招生中';
     byStatus[st] = (byStatus[st] || 0) + 1;
-    totalStudentsSum += Number(row.totalStudents ?? 0);
+    totalStudents += Number(row.totalStudents ?? 0);
     priceSum += Number(row.price ?? 0);
   }
   const avgPrice = total === 0 ? 0 : Math.round((priceSum / total) * 100) / 100;
-  res.json({ total, byStatus, totalStudents: totalStudentsSum, avgPrice });
+  res.json({ total, byStatus, totalStudents, avgPrice });
 });

@@ -15,8 +15,10 @@ const VALID_STATUSES: RecordStatus[] = ['学习中', '已完成', '已暂停'];
 
 export const learningRouter = Router();
 
-function fetchAllRecords(): LearningRecord[] {
-  const rows = db.prepare('SELECT id, student, course, progress, status FROM records').all() as unknown as Record<string, unknown>[];
+function fetchAllRecords(tenantId: number): LearningRecord[] {
+  const rows = db.prepare(
+    'SELECT id, student, course, progress, status FROM records WHERE tenantId = ?'
+  ).all(tenantId) as unknown as Record<string, unknown>[];
   return rows.map((r) => ({
     id: r.id as number,
     student: (r.student as string) ?? '',
@@ -26,11 +28,19 @@ function fetchAllRecords(): LearningRecord[] {
   }));
 }
 
-learningRouter.get('/records', (_req, res) => {
-  res.json(fetchAllRecords());
+learningRouter.get('/records', (req, res) => {
+  if (!req.auth) {
+    res.status(401).json({ error: '未认证，请先登录' });
+    return;
+  }
+  res.json(fetchAllRecords(req.auth.tenantId));
 });
 
 learningRouter.post('/records', (req, res) => {
+  if (!req.auth) {
+    res.status(401).json({ error: '未认证，请先登录' });
+    return;
+  }
   const { student, course, progress } = req.body || {};
   if (typeof student !== 'string' || student.trim() === '') {
     res.status(400).json({ error: 'student 必填' });
@@ -47,9 +57,9 @@ learningRouter.post('/records', (req, res) => {
   const courseStr = typeof course === 'string' ? course : '';
 
   const stmt = db.prepare(
-    `INSERT INTO records (student, course, progress, status) VALUES (?, ?, ?, '学习中')`
+    `INSERT INTO records (student, course, progress, status, tenantId) VALUES (?, ?, ?, '学习中', ?)`
   );
-  const result = stmt.run(student, courseStr, progressNum);
+  const result = stmt.run(student, courseStr, progressNum, req.auth.tenantId);
   const id = Number(result.lastInsertRowid);
   const record: LearningRecord = {
     id,
@@ -62,8 +72,13 @@ learningRouter.post('/records', (req, res) => {
 });
 
 learningRouter.patch('/records/:id/status', (req, res) => {
+  if (!req.auth) {
+    res.status(401).json({ error: '未认证，请先登录' });
+    return;
+  }
   const idNum = Number(req.params.id);
-  const found = db.prepare('SELECT id FROM records WHERE id = ?').get(idNum);
+  const tenantId = req.auth.tenantId;
+  const found = db.prepare('SELECT id FROM records WHERE id = ? AND tenantId = ?').get(idNum, tenantId);
   if (!found) {
     res.status(404).json({ error: '记录不存在' });
     return;
@@ -73,8 +88,8 @@ learningRouter.patch('/records/:id/status', (req, res) => {
     res.status(400).json({ error: `status 必须是 ${VALID_STATUSES.join(' / ')}` });
     return;
   }
-  db.prepare('UPDATE records SET status = ? WHERE id = ?').run(status, idNum);
-  const updated = db.prepare('SELECT id, student, course, progress, status FROM records WHERE id = ?').get(idNum) as unknown as Record<string, unknown>;
+  db.prepare('UPDATE records SET status = ? WHERE id = ? AND tenantId = ?').run(status, idNum, tenantId);
+  const updated = db.prepare('SELECT id, student, course, progress, status FROM records WHERE id = ? AND tenantId = ?').get(idNum, tenantId) as unknown as Record<string, unknown>;
   res.json({
     id: updated.id,
     student: updated.student ?? '',
@@ -84,8 +99,12 @@ learningRouter.patch('/records/:id/status', (req, res) => {
   });
 });
 
-learningRouter.get('/stats', (_req, res) => {
-  const rows = db.prepare('SELECT status, progress FROM records').all() as unknown as { status: string; progress: number }[];
+learningRouter.get('/stats', (req, res) => {
+  if (!req.auth) {
+    res.status(401).json({ error: '未认证，请先登录' });
+    return;
+  }
+  const rows = db.prepare('SELECT status, progress FROM records WHERE tenantId = ?').all(req.auth.tenantId) as unknown as { status: string; progress: number }[];
   const total = rows.length;
   const byStatus: Record<string, number> = {};
   for (const s of VALID_STATUSES) byStatus[s] = 0;

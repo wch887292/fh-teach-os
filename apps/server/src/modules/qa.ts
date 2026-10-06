@@ -15,8 +15,10 @@ const VALID_STATUSES: QuestionStatus[] = ['待回复', '处理中', '已解决']
 
 export const qaRouter = Router();
 
-function fetchAllQuestions(): Question[] {
-  const rows = db.prepare('SELECT id, student, course, question, status FROM questions').all() as unknown as Record<string, unknown>[];
+function fetchAllQuestions(tenantId: number): Question[] {
+  const rows = db.prepare(
+    'SELECT id, student, course, question, status FROM questions WHERE tenantId = ?'
+  ).all(tenantId) as unknown as Record<string, unknown>[];
   return rows.map((r) => ({
     id: r.id as number,
     student: (r.student as string) ?? '',
@@ -26,11 +28,19 @@ function fetchAllQuestions(): Question[] {
   }));
 }
 
-qaRouter.get('/questions', (_req, res) => {
-  res.json(fetchAllQuestions());
+qaRouter.get('/questions', (req, res) => {
+  if (!req.auth) {
+    res.status(401).json({ error: '未认证，请先登录' });
+    return;
+  }
+  res.json(fetchAllQuestions(req.auth.tenantId));
 });
 
 qaRouter.post('/questions', (req, res) => {
+  if (!req.auth) {
+    res.status(401).json({ error: '未认证，请先登录' });
+    return;
+  }
   const { student, course, question } = req.body || {};
   if (typeof student !== 'string' || student.trim() === '') {
     res.status(400).json({ error: 'student 必填' });
@@ -40,9 +50,9 @@ qaRouter.post('/questions', (req, res) => {
   const questionStr = typeof question === 'string' ? question : '';
 
   const stmt = db.prepare(
-    `INSERT INTO questions (student, course, question, status) VALUES (?, ?, ?, '待回复')`
+    `INSERT INTO questions (student, course, question, status, tenantId) VALUES (?, ?, ?, '待回复', ?)`
   );
-  const result = stmt.run(student, courseStr, questionStr);
+  const result = stmt.run(student, courseStr, questionStr, req.auth.tenantId);
   const id = Number(result.lastInsertRowid);
   const item: Question = {
     id,
@@ -55,8 +65,13 @@ qaRouter.post('/questions', (req, res) => {
 });
 
 qaRouter.patch('/questions/:id/status', (req, res) => {
+  if (!req.auth) {
+    res.status(401).json({ error: '未认证，请先登录' });
+    return;
+  }
   const idNum = Number(req.params.id);
-  const found = db.prepare('SELECT id FROM questions WHERE id = ?').get(idNum);
+  const tenantId = req.auth.tenantId;
+  const found = db.prepare('SELECT id FROM questions WHERE id = ? AND tenantId = ?').get(idNum, tenantId);
   if (!found) {
     res.status(404).json({ error: '问题不存在' });
     return;
@@ -66,8 +81,8 @@ qaRouter.patch('/questions/:id/status', (req, res) => {
     res.status(400).json({ error: `status 必须是 ${VALID_STATUSES.join(' / ')}` });
     return;
   }
-  db.prepare('UPDATE questions SET status = ? WHERE id = ?').run(status, idNum);
-  const updated = db.prepare('SELECT id, student, course, question, status FROM questions WHERE id = ?').get(idNum) as unknown as Record<string, unknown>;
+  db.prepare('UPDATE questions SET status = ? WHERE id = ? AND tenantId = ?').run(status, idNum, tenantId);
+  const updated = db.prepare('SELECT id, student, course, question, status FROM questions WHERE id = ? AND tenantId = ?').get(idNum, tenantId) as unknown as Record<string, unknown>;
   res.json({
     id: updated.id,
     student: updated.student ?? '',
@@ -77,8 +92,12 @@ qaRouter.patch('/questions/:id/status', (req, res) => {
   });
 });
 
-qaRouter.get('/stats', (_req, res) => {
-  const rows = db.prepare('SELECT status FROM questions').all() as unknown as { status: string }[];
+qaRouter.get('/stats', (req, res) => {
+  if (!req.auth) {
+    res.status(401).json({ error: '未认证，请先登录' });
+    return;
+  }
+  const rows = db.prepare('SELECT status FROM questions WHERE tenantId = ?').all(req.auth.tenantId) as unknown as { status: string }[];
   const total = rows.length;
   const byStatus: Record<string, number> = {};
   for (const s of VALID_STATUSES) byStatus[s] = 0;

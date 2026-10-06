@@ -16,8 +16,10 @@ const VALID_STATUSES: LeadStatus[] = ['新线索', '跟进中', '已成交', '�
 
 export const conversionRouter = Router();
 
-function fetchAllLeads(): Lead[] {
-  const rows = db.prepare('SELECT id, name, source, course, amount, status FROM leads').all() as unknown as Record<string, unknown>[];
+function fetchAllLeads(tenantId: number): Lead[] {
+  const rows = db.prepare(
+    'SELECT id, name, source, course, amount, status FROM leads WHERE tenantId = ?'
+  ).all(tenantId) as unknown as Record<string, unknown>[];
   return rows.map((r) => ({
     id: r.id as number,
     name: (r.name as string) ?? '',
@@ -28,11 +30,19 @@ function fetchAllLeads(): Lead[] {
   }));
 }
 
-conversionRouter.get('/leads', (_req, res) => {
-  res.json(fetchAllLeads());
+conversionRouter.get('/leads', (req, res) => {
+  if (!req.auth) {
+    res.status(401).json({ error: '未认证，请先登录' });
+    return;
+  }
+  res.json(fetchAllLeads(req.auth.tenantId));
 });
 
 conversionRouter.post('/leads', (req, res) => {
+  if (!req.auth) {
+    res.status(401).json({ error: '未认证，请先登录' });
+    return;
+  }
   const { name, source, course, amount } = req.body || {};
   if (typeof name !== 'string' || name.trim() === '') {
     res.status(400).json({ error: 'name 必填' });
@@ -43,9 +53,9 @@ conversionRouter.post('/leads', (req, res) => {
   const amountNum = typeof amount === 'number' ? amount : Number(amount) || 0;
 
   const stmt = db.prepare(
-    `INSERT INTO leads (name, source, course, amount, status) VALUES (?, ?, ?, ?, '新线索')`
+    `INSERT INTO leads (name, source, course, amount, status, tenantId) VALUES (?, ?, ?, ?, '新线索', ?)`
   );
-  const result = stmt.run(name, sourceStr, courseStr, amountNum);
+  const result = stmt.run(name, sourceStr, courseStr, amountNum, req.auth.tenantId);
   const id = Number(result.lastInsertRowid);
   const lead: Lead = {
     id,
@@ -59,8 +69,13 @@ conversionRouter.post('/leads', (req, res) => {
 });
 
 conversionRouter.patch('/leads/:id/status', (req, res) => {
+  if (!req.auth) {
+    res.status(401).json({ error: '未认证，请先登录' });
+    return;
+  }
   const idNum = Number(req.params.id);
-  const found = db.prepare('SELECT id, name, source, course, amount, status FROM leads WHERE id = ?').get(idNum);
+  const tenantId = req.auth.tenantId;
+  const found = db.prepare('SELECT id, name, source, course, amount, status FROM leads WHERE id = ? AND tenantId = ?').get(idNum, tenantId);
   if (!found) {
     res.status(404).json({ error: '线索不存在' });
     return;
@@ -70,8 +85,8 @@ conversionRouter.patch('/leads/:id/status', (req, res) => {
     res.status(400).json({ error: `status 必须是 ${VALID_STATUSES.join(' / ')}` });
     return;
   }
-  db.prepare('UPDATE leads SET status = ? WHERE id = ?').run(status, idNum);
-  const updated = db.prepare('SELECT id, name, source, course, amount, status FROM leads WHERE id = ?').get(idNum) as unknown as Record<string, unknown>;
+  db.prepare('UPDATE leads SET status = ? WHERE id = ? AND tenantId = ?').run(status, idNum, tenantId);
+  const updated = db.prepare('SELECT id, name, source, course, amount, status FROM leads WHERE id = ? AND tenantId = ?').get(idNum, tenantId) as unknown as Record<string, unknown>;
   res.json({
     id: updated.id,
     name: updated.name ?? '',
@@ -82,8 +97,12 @@ conversionRouter.patch('/leads/:id/status', (req, res) => {
   });
 });
 
-conversionRouter.get('/stats', (_req, res) => {
-  const rows = db.prepare('SELECT status, amount FROM leads').all() as unknown as { status: string; amount: number }[];
+conversionRouter.get('/stats', (req, res) => {
+  if (!req.auth) {
+    res.status(401).json({ error: '未认证，请先登录' });
+    return;
+  }
+  const rows = db.prepare('SELECT status, amount FROM leads WHERE tenantId = ?').all(req.auth.tenantId) as unknown as { status: string; amount: number }[];
   const total = rows.length;
   const byStatus: Record<string, number> = {};
   for (const s of VALID_STATUSES) byStatus[s] = 0;
