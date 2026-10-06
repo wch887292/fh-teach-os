@@ -15,7 +15,11 @@ interface IpEntry {
 const ipMap = new Map<string, IpEntry>();
 
 function getClientIp(req: Request): string {
-  return req.ip ?? (req.socket?.remoteAddress ?? 'unknown');
+  const raw = req.ip ?? (req.socket?.remoteAddress ?? 'unknown');
+  // IPv4-mapped IPv6（::ffff:127.0.0.1）归一化为 IPv4 形式。
+  // dual-stack 监听下不同 TCP 连接的源地址形式可能摇摆，
+  // 不归一化会导致同一客户端计数分裂、限流失效。
+  return raw.startsWith('::ffff:') ? raw.slice(7) : raw;
 }
 
 export function riskMiddleware(req: Request, res: Response, next: NextFunction): void {

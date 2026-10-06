@@ -6,15 +6,21 @@ import { db } from '../db';
  */
 export function auditMiddleware(req: Request, _res: Response, next: NextFunction): void {
   const startTime = Date.now();
+  // 关键：在进入子路由前快照完整路径。
+  // req.path 是动态 getter，请求进入 app.use('/api/xxx', router) 子路由时
+  // req.url 会被剥掉挂载前缀且 handler 不调 next 时不恢复，
+  // 导致 finish 触发时 req.path 变成 '/stats' 之类而被过滤漏记。
+  // req.originalUrl 由 Express 入口设置后不会被改写，是可靠来源。
+  const reqPath = (req.originalUrl || req.url || '').split('?')[0];
 
   _res.on('finish', () => {
-    if (!req.path.startsWith('/api/')) return;
+    if (!reqPath.startsWith('/api/')) return;
 
     const durationMs = Date.now() - startTime;
     const stmt = db.prepare(
       'INSERT INTO audit_logs (ts, method, path, status, durationMs) VALUES (datetime(\'now\'), ?, ?, ?, ?)'
     );
-    stmt.run(req.method, req.path, _res.statusCode, durationMs);
+    stmt.run(req.method, reqPath, _res.statusCode, durationMs);
   });
 
   next();
