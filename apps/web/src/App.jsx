@@ -4,14 +4,20 @@ const MODULE_META = {
   acquisition: { name: '获课', description: '招生获客、线索管理', online: true },
   course:      { name: '出课', description: '课程交付、教学管理', online: true },
   conversion:  { name: '转化', description: '线索转化、成交跟进', online: true },
-  qa:          { name: '答疑', description: '学生答疑、客服支持', online: false },
+  qa:          { name: '答疑', description: '学生答疑、客服支持', online: true },
   learning:    { name: '培学', description: '学习管理、成长跟踪', online: false },
   data:        { name: '数据', description: '数据看板、运营洞察', online: false },
 };
 
-const getNextStatus = (current) => {
+const getNextConversionStatus = (current) => {
   if (current === '新线索') return '跟进中';
   if (current === '跟进中') return '已成交';
+  return null;
+};
+
+const getNextQaStatus = (current) => {
+  if (current === '待回复') return '处理中';
+  if (current === '处理中') return '已解决';
   return null;
 };
 
@@ -62,22 +68,25 @@ export default function App() {
         >
           转化板块
         </button>
+        <button
+          style={{ ...styles.tabBtn, ...(tab === '答疑板块' ? styles.tabActive : {}) }}
+          onClick={() => setTab('答疑板块')}
+        >
+          答疑板块
+        </button>
       </nav>
 
       {tab === '总览' ? (
         <>
           <div style={styles.statusBar}>
-            <span style={styles.statusDot(connected)}>
-              <span
-                style={{
-                  display: 'inline-block',
-                  width: 8,
-                  height: 8,
-                  borderRadius: '50%',
-                  marginRight: 6,
-                  background: connected ? '#22c55e' : connected === false ? '#ef4444' : '#94a3b8',
-                }}
-              />
+            <span style={{
+              display: 'inline-block',
+              width: 8,
+              height: 8,
+              borderRadius: '50%',
+              marginRight: 6,
+              background: connected ? '#22c55e' : connected === false ? '#ef4444' : '#94a3b8',
+            }} />
               后端{connected ? '已连接' : connected === false ? '未连接' : '检测中…'}
             </span>
           </div>
@@ -117,8 +126,10 @@ export default function App() {
             </div>
           )}
         </>
-      ) : (
+      ) : tab === '转化板块' ? (
         <ConversionPanel />
+      ) : (
+        <QaPanel />
       )}
 
       <footer style={styles.footer}>
@@ -154,7 +165,7 @@ function ConversionPanel() {
   useEffect(() => { loadAll(); }, []);
 
   const advanceStatus = async (lead) => {
-    const next = getNextStatus(lead.status);
+    const next = getNextConversionStatus(lead.status);
     if (!next) return;
     setBusy(true);
     try {
@@ -239,7 +250,7 @@ function ConversionPanel() {
           </thead>
           <tbody>
             {leads.map((lead) => {
-              const next = getNextStatus(lead.status);
+              const next = getNextConversionStatus(lead.status);
               const sc = statusColors[lead.status] || { bg: '#f1f5f9', color: '#475569' };
               return (
                 <tr key={lead.id} style={styles.tr}>
@@ -315,6 +326,180 @@ function ConversionPanel() {
   );
 }
 
+function QaPanel() {
+  const [stats, setStats] = useState(null);
+  const [questions, setQuestions] = useState([]);
+  const [form, setForm] = useState({ student: '', course: '', question: '' });
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const loadAll = async () => {
+    try {
+      const [statsRes, questionsRes] = await Promise.all([
+        fetch('/api/qa/stats'),
+        fetch('/api/qa/questions'),
+      ]);
+      if (!statsRes.ok || !questionsRes.ok) throw new Error('HTTP ' + statsRes.status);
+      setStats(await statsRes.json());
+      setQuestions(await questionsRes.json());
+    } catch {
+      setError('加载答疑数据失败');
+    }
+  };
+
+  useEffect(() => { loadAll(); }, []);
+
+  const advanceStatus = async (question) => {
+    const next = getNextQaStatus(question.status);
+    if (!next) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/qa/questions/${question.id}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: next }),
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      await loadAll();
+    } catch {
+      setError('推进状态失败');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const submitQuestion = async (e) => {
+    e.preventDefault();
+    setBusy(true);
+    setError('');
+    try {
+      const res = await fetch('/api/qa/questions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          student: form.student,
+          course: form.course,
+          question: form.question,
+        }),
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      setForm({ student: '', course: '', question: '' });
+      await loadAll();
+    } catch {
+      setError('新增问题失败');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const statItems = [
+    { label: '问题总数', value: stats?.total ?? 0 },
+    { label: '待回复', value: stats?.byStatus?.['待回复'] ?? 0 },
+    { label: '处理中', value: stats?.byStatus?.['处理中'] ?? 0 },
+    { label: '解决率', value: `${stats?.resolveRate ?? 0}%` },
+  ];
+
+  const statusColors = {
+    '待回复': { bg: '#eff6ff', color: '#1d4ed8' },
+    '处理中': { bg: '#fef3c7', color: '#92400e' },
+    '已解决': { bg: '#dcfce7', color: '#166534' },
+  };
+
+  return (
+    <div>
+      <div style={styles.statsRow4}>
+        {statItems.map((s) => (
+          <div key={s.label} style={styles.statCard}>
+            <div style={styles.statValue}>{s.value}</div>
+            <div style={styles.statLabel}>{s.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {error && <div style={styles.error}>{error}</div>}
+
+      <div style={styles.tableWrap}>
+        <table style={styles.table}>
+          <thead>
+            <tr>
+              <th style={styles.th}>学生</th>
+              <th style={styles.th}>课程</th>
+              <th style={styles.th}>问题</th>
+              <th style={styles.th}>状态</th>
+              <th style={styles.th}>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {questions.map((question) => {
+              const next = getNextQaStatus(question.status);
+              const sc = statusColors[question.status] || { bg: '#f1f5f9', color: '#475569' };
+              return (
+                <tr key={question.id} style={styles.tr}>
+                  <td style={styles.td}>{question.student}</td>
+                  <td style={styles.td}>{question.course}</td>
+                  <td style={styles.td}>{question.question}</td>
+                  <td style={styles.td}>
+                    <span style={{ ...styles.statusBadge, background: sc.bg, color: sc.color }}>
+                      {question.status}
+                    </span>
+                  </td>
+                  <td style={styles.td}>
+                    {next ? (
+                      <button
+                        style={styles.advanceBtn}
+                        onClick={() => advanceStatus(question)}
+                        disabled={busy}
+                      >
+                        推进为{next}
+                      </button>
+                    ) : (
+                      <span style={styles.actionPlaceholder}>—</span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+            {questions.length === 0 && (
+              <tr>
+                <td colSpan={5} style={styles.td}>暂无问题</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <form style={styles.form} onSubmit={submitQuestion}>
+        <h3 style={styles.formTitle}>新增问题</h3>
+        <div style={styles.formRow}>
+          <input
+            style={styles.input}
+            placeholder="学生"
+            value={form.student}
+            onChange={(e) => setForm({ ...form, student: e.target.value })}
+            required
+          />
+          <input
+            style={styles.input}
+            placeholder="课程"
+            value={form.course}
+            onChange={(e) => setForm({ ...form, course: e.target.value })}
+          />
+          <input
+            style={styles.input}
+            placeholder="问题"
+            value={form.question}
+            onChange={(e) => setForm({ ...form, question: e.target.value })}
+            required
+          />
+          <button type="submit" style={styles.submitBtn} disabled={busy}>
+            提交
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 const styles = {
   page: {
     fontFamily: "'PingFang SC', 'Microsoft YaHei', sans-serif",
@@ -324,53 +509,52 @@ const styles = {
     color: '#1e293b',
   },
   header: {
-    marginBottom: 16,
+    marginBottom: 28,
   },
   title: {
-    fontSize: 28,
-    fontWeight: 700,
     margin: 0,
+    fontSize: 26,
+    fontWeight: 700,
+    color: '#0f172a',
   },
   subtitle: {
+    margin: '6px 0 0',
     fontSize: 14,
     color: '#64748b',
-    margin: '8px 0 0',
   },
   tabs: {
     display: 'flex',
-    gap: 8,
-    marginBottom: 20,
+    gap: 6,
+    marginBottom: 24,
+    borderBottom: '2px solid #e2e8f0',
+    paddingBottom: 12,
   },
   tabBtn: {
     padding: '8px 20px',
-    borderRadius: 8,
+    borderRadius: 6,
     border: '1px solid #e2e8f0',
-    background: '#fff',
+    background: '#ffffff',
     color: '#475569',
     fontSize: 14,
+    fontWeight: 500,
     cursor: 'pointer',
     transition: 'all 0.15s',
   },
   tabActive: {
-    background: '#1e293b',
-    color: '#fff',
-    border: '1px solid #1e293b',
+    background: '#0f172a',
+    color: '#ffffff',
+    border: '1px solid #0f172a',
   },
   statusBar: {
-    marginBottom: 20,
-  },
-  statusDot: (connected) => ({
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: 6,
+    marginBottom: 16,
     fontSize: 13,
-    color: connected ? '#16a34a' : connected === false ? '#dc2626' : '#64748b',
-  }),
-  loading: {
     color: '#64748b',
+  },
+  loading: {
     padding: 40,
     textAlign: 'center',
-    fontSize: 14,
+    color: '#94a3b8',
+    fontSize: 15,
   },
   grid: {
     display: 'grid',
@@ -378,11 +562,11 @@ const styles = {
     gap: 16,
   },
   card: {
-    background: '#fff',
-    borderRadius: 12,
-    padding: '16px 18px',
-    boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
-    transition: 'box-shadow 0.2s',
+    background: '#ffffff',
+    borderRadius: 10,
+    padding: 20,
+    boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+    border: '1px solid #f1f5f9',
   },
   cardHeader: {
     display: 'flex',
@@ -391,29 +575,30 @@ const styles = {
     marginBottom: 8,
   },
   cardTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: 600,
+    color: '#1e293b',
   },
   badge: {
     fontSize: 11,
-    padding: '2px 8px',
-    borderRadius: 99,
-    fontWeight: 600,
+    padding: '3px 8px',
+    borderRadius: 10,
+    fontWeight: 500,
   },
   cardDesc: {
+    margin: 0,
     fontSize: 13,
     color: '#64748b',
-    margin: 0,
+    lineHeight: 1.5,
   },
   code: {
-    display: 'block',
+    display: 'inline-block',
     marginTop: 10,
     fontSize: 11,
     color: '#94a3b8',
     background: '#f1f5f9',
     padding: '2px 6px',
     borderRadius: 4,
-    width: 'fit-content',
   },
   statsRow: {
     display: 'grid',
@@ -421,114 +606,133 @@ const styles = {
     gap: 12,
     marginBottom: 20,
   },
+  statsRow4: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(4, 1fr)',
+    gap: 12,
+    marginBottom: 20,
+  },
   statCard: {
-    background: '#fff',
-    borderRadius: 12,
-    padding: '16px 18px',
-    boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+    background: '#ffffff',
+    borderRadius: 10,
+    padding: '18px 16px',
+    boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+    border: '1px solid #f1f5f9',
+    textAlign: 'center',
   },
   statValue: {
-    fontSize: 22,
+    fontSize: 26,
     fontWeight: 700,
-    color: '#1e293b',
+    color: '#0f172a',
+    marginBottom: 4,
   },
   statLabel: {
     fontSize: 12,
-    color: '#64748b',
-    marginTop: 4,
+    color: '#94a3b8',
   },
   error: {
-    color: '#dc2626',
+    background: '#fee2e2',
+    color: '#991b1b',
+    padding: '10px 14px',
+    borderRadius: 8,
     fontSize: 13,
-    marginBottom: 12,
+    marginBottom: 16,
   },
   tableWrap: {
-    background: '#fff',
-    borderRadius: 12,
-    boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+    background: '#ffffff',
+    borderRadius: 10,
+    border: '1px solid #f1f5f9',
     overflow: 'auto',
     marginBottom: 20,
+    boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
   },
   table: {
     width: '100%',
     borderCollapse: 'collapse',
-    fontSize: 14,
+    fontSize: 13,
   },
   th: {
+    padding: '10px 12px',
     textAlign: 'left',
-    padding: '12px 16px',
-    color: '#64748b',
-    fontSize: 12,
     fontWeight: 600,
-    borderBottom: '1px solid #e2e8f0',
+    color: '#64748b',
+    borderBottom: '2px solid #f1f5f9',
+    whiteSpace: 'nowrap',
   },
   tr: {
-    borderBottom: '1px solid #f1f5f9',
+    borderBottom: '1px solid #f8fafc',
   },
   td: {
-    padding: '12px 16px',
+    padding: '10px 12px',
+    color: '#1e293b',
   },
   statusBadge: {
     fontSize: 11,
-    padding: '2px 8px',
-    borderRadius: 99,
-    fontWeight: 600,
+    padding: '3px 8px',
+    borderRadius: 10,
+    fontWeight: 500,
   },
   advanceBtn: {
-    fontSize: 12,
-    padding: '4px 10px',
+    padding: '5px 12px',
     borderRadius: 6,
-    border: '1px solid #22c55e',
-    background: '#f0fdf4',
-    color: '#166534',
+    border: '1px solid #e2e8f0',
+    background: '#ffffff',
+    color: '#1e293b',
+    fontSize: 12,
     cursor: 'pointer',
+    fontWeight: 500,
   },
   actionPlaceholder: {
     color: '#cbd5e1',
+    fontSize: 13,
   },
   form: {
-    background: '#fff',
-    borderRadius: 12,
-    padding: '16px 18px',
-    boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+    background: '#ffffff',
+    borderRadius: 10,
+    border: '1px solid #f1f5f9',
+    padding: 20,
+    boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
   },
   formTitle: {
-    margin: '0 0 12px',
+    margin: '0 0 14px',
     fontSize: 15,
     fontWeight: 600,
+    color: '#1e293b',
   },
   formRow: {
     display: 'flex',
-    gap: 8,
+    gap: 10,
     flexWrap: 'wrap',
   },
   input: {
-    flex: 1,
-    minWidth: 120,
-    padding: '8px 10px',
+    flex: '1 1 140px',
+    padding: '8px 12px',
     borderRadius: 6,
     border: '1px solid #e2e8f0',
     fontSize: 13,
+    color: '#1e293b',
+    outline: 'none',
+    background: '#f8fafc',
   },
   submitBtn: {
-    padding: '8px 20px',
+    padding: '8px 24px',
     borderRadius: 6,
     border: 'none',
-    background: '#1e293b',
-    color: '#fff',
+    background: '#0f172a',
+    color: '#ffffff',
     fontSize: 13,
-    fontWeight: 600,
+    fontWeight: 500,
     cursor: 'pointer',
   },
   footer: {
     marginTop: 40,
-    paddingTop: 16,
+    paddingTop: 24,
     borderTop: '1px solid #e2e8f0',
-    textAlign: 'center',
   },
   footerLine: {
-    margin: '2px 0',
+    margin: '4px 0',
     fontSize: 12,
     color: '#94a3b8',
+    textAlign: 'center',
   },
 };

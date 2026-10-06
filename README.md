@@ -6,8 +6,8 @@
 ### 六大板块与状态
 - 获课: 已上线 (online)
 - 出课: 已上线 (online)
-- 转化: 待开发 (planned)
-- 答疑: 待开发 (planned)
+- 转化: 已上线 (online)
+- 答疑: 已上线 (online)
 - 培学: 待开发 (planned)
 - 数据: 待开发 (planned)
 
