@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { authFetch, isAuthError } from './api';
 
 const styles = {
   statsRow: {
@@ -119,7 +120,7 @@ const styles = {
   },
 };
 
-export default function AcquisitionPanel() {
+export default function AcquisitionPanel({ onAuthFailure }) {
   const [stats, setStats] = useState(null);
   const [channels, setChannels] = useState([]);
   const [form, setForm] = useState({ name: '', type: '', investment: '', costPerLead: '' });
@@ -129,13 +130,14 @@ export default function AcquisitionPanel() {
   const loadAll = async () => {
     try {
       const [statsRes, channelsRes] = await Promise.all([
-        fetch('/api/acquisition/stats'),
-        fetch('/api/acquisition/channels'),
+        authFetch('/api/acquisition/stats'),
+        authFetch('/api/acquisition/channels'),
       ]);
       if (!statsRes.ok || !channelsRes.ok) throw new Error('HTTP ' + statsRes.status);
       setStats(await statsRes.json());
       setChannels(await channelsRes.json());
-    } catch {
+    } catch (err) {
+      if (isAuthError(err)) { onAuthFailure && onAuthFailure(err); return; }
       setError('加载获课数据失败');
     }
   };
@@ -147,7 +149,7 @@ export default function AcquisitionPanel() {
     setBusy(true);
     setError('');
     try {
-      const res = await fetch('/api/acquisition/channels', {
+      const res = await authFetch('/api/acquisition/channels', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -160,7 +162,8 @@ export default function AcquisitionPanel() {
       if (!res.ok) throw new Error('HTTP ' + res.status);
       setForm({ name: '', type: '', investment: '', costPerLead: '' });
       await loadAll();
-    } catch {
+    } catch (err) {
+      if (isAuthError(err)) { onAuthFailure && onAuthFailure(err); return; }
       setError('新增渠道失败');
     } finally {
       setBusy(false);
@@ -172,14 +175,15 @@ export default function AcquisitionPanel() {
     if (!next) return;
     setBusy(true);
     try {
-      const res = await fetch(`/api/acquisition/channels/${channel.id}/status`, {
+      const res = await authFetch(`/api/acquisition/channels/${channel.id}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: next }),
       });
       if (!res.ok) throw new Error('HTTP ' + res.status);
       await loadAll();
-    } catch {
+    } catch (err) {
+      if (isAuthError(err)) { onAuthFailure && onAuthFailure(err); return; }
       setError('推进状态失败');
     } finally {
       setBusy(false);

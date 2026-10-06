@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { authFetch, isAuthError } from './api';
 
 const styles = {
   statsRow: {
@@ -125,7 +126,7 @@ const statusColors = {
   '已结课': { bg: '#f1f5f9', color: '#475569' },
 };
 
-export default function CoursePanel() {
+export default function CoursePanel({ onAuthFailure }) {
   const [stats, setStats] = useState(null);
   const [courses, setCourses] = useState([]);
   const [form, setForm] = useState({ name: '', teacher: '', price: '', totalStudents: '', capacity: '' });
@@ -135,13 +136,14 @@ export default function CoursePanel() {
   const loadAll = async () => {
     try {
       const [statsRes, coursesRes] = await Promise.all([
-        fetch('/api/course/stats'),
-        fetch('/api/course/courses'),
+        authFetch('/api/course/stats'),
+        authFetch('/api/course/courses'),
       ]);
       if (!statsRes.ok || !coursesRes.ok) throw new Error('HTTP ' + statsRes.status);
       setStats(await statsRes.json());
       setCourses(await coursesRes.json());
-    } catch {
+    } catch (err) {
+      if (isAuthError(err)) { onAuthFailure && onAuthFailure(err); return; }
       setError('加载出课数据失败');
     }
   };
@@ -153,7 +155,7 @@ export default function CoursePanel() {
     setBusy(true);
     setError('');
     try {
-      const res = await fetch('/api/course/courses', {
+      const res = await authFetch('/api/course/courses', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -167,7 +169,8 @@ export default function CoursePanel() {
       if (!res.ok) throw new Error('HTTP ' + res.status);
       setForm({ name: '', teacher: '', price: '', totalStudents: '', capacity: '' });
       await loadAll();
-    } catch {
+    } catch (err) {
+      if (isAuthError(err)) { onAuthFailure && onAuthFailure(err); return; }
       setError('新增课程失败');
     } finally {
       setBusy(false);
@@ -178,14 +181,15 @@ export default function CoursePanel() {
     setBusy(true);
     setError('');
     try {
-      const res = await fetch(`/api/course/courses/${course.id}/status`, {
+      const res = await authFetch(`/api/course/courses/${course.id}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: '已满' }),
       });
       if (!res.ok) throw new Error('HTTP ' + res.status);
       await loadAll();
-    } catch {
+    } catch (err) {
+      if (isAuthError(err)) { onAuthFailure && onAuthFailure(err); return; }
       setError('标记已满失败');
     } finally {
       setBusy(false);

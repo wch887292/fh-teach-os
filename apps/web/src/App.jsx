@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import AcquisitionPanel from './AcquisitionPanel';
 import CoursePanel from './CoursePanel';
+import Login from './Login';
+import { authFetch, clearToken, isAuthError, getToken } from './api';
 
 const MODULE_META = {
   acquisition: { name: '获课', description: '招生获客、线索管理', online: true },
@@ -29,22 +31,59 @@ const getNextChannelStatus = (current) => {
 };
 
 export default function App() {
+  const [loggedIn, setLoggedIn] = useState(() => Boolean(getToken()));
   const [tab, setTab] = useState('总览');
   const [modules, setModules] = useState([]);
   const [connected, setConnected] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetch('/api/modules')
+  // 401 统一兜底：清 token 回登录页
+  const handleAuthFailure = (err) => {
+    if (isAuthError(err)) {
+      setLoggedIn(false);
+    }
+  };
+
+  const handleLogout = () => {
+    clearToken();
+    setLoggedIn(false);
+  };
+
+  const handleLoginSuccess = () => {
+    setLoggedIn(true);
+    // 重新拉取一次模块状态，进入主界面
+    authFetch('/api/modules')
       .then((res) => {
         if (!res.ok) throw new Error('HTTP ' + res.status);
         setConnected(true);
         return res.json();
       })
       .then((data) => setModules(data))
-      .catch(() => setConnected(false))
+      .catch((err) => {
+        if (isAuthError(err)) setConnected(false);
+        else setConnected(false);
+      })
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    authFetch('/api/modules')
+      .then((res) => {
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        setConnected(true);
+        return res.json();
+      })
+      .then((data) => setModules(data))
+      .catch((err) => {
+        handleAuthFailure(err);
+        setConnected(false);
+      })
       .finally(() => setLoading(false));
   }, []);
+
+  if (!loggedIn) {
+    return <Login onLogin={handleLoginSuccess} />;
+  }
 
   const items = (
     modules.length > 0
@@ -58,8 +97,15 @@ export default function App() {
   return (
     <div style={styles.page}>
       <header style={styles.header}>
-        <h1 style={styles.title}>Teach-OS · 教育操作系统</h1>
-        <p style={styles.subtitle}>六大板块 · 会 AI 的人 + 系统，替代传统小教育团队</p>
+        <div style={styles.headerRow}>
+          <div>
+            <h1 style={styles.title}>Teach-OS · 教育操作系统</h1>
+            <p style={styles.subtitle}>六大板块 · 会 AI 的人 + 系统，替代传统小教育团队</p>
+          </div>
+          <button style={styles.logoutBtn} onClick={handleLogout}>
+            退出登录
+          </button>
+        </div>
       </header>
 
       <nav style={styles.tabs}>
@@ -108,9 +154,9 @@ export default function App() {
       </nav>
 
       {tab === '获课板块' ? (
-        <AcquisitionPanel />
+        <AcquisitionPanel onAuthFailure={handleAuthFailure} />
       ) : tab === '出课板块' ? (
-        <CoursePanel />
+        <CoursePanel onAuthFailure={handleAuthFailure} />
       ) : tab === '总览' ? (
         <>
           <div style={styles.statusBar}>
@@ -165,13 +211,13 @@ export default function App() {
           )}
         </>
       ) : tab === '转化板块' ? (
-        <ConversionPanel />
+        <ConversionPanel onAuthFailure={handleAuthFailure} />
       ) : tab === '答疑板块' ? (
-        <QaPanel />
+        <QaPanel onAuthFailure={handleAuthFailure} />
       ) : tab === '数据看板' ? (
-        <DataPanel />
+        <DataPanel onAuthFailure={handleAuthFailure} />
       ) : (
-        <LearningPanel />
+        <LearningPanel onAuthFailure={handleAuthFailure} />
       )}
 
       <footer style={styles.footer}>
@@ -183,7 +229,7 @@ export default function App() {
   );
 }
 
-function ConversionPanel() {
+function ConversionPanel({ onAuthFailure }) {
   const [stats, setStats] = useState(null);
   const [leads, setLeads] = useState([]);
   const [form, setForm] = useState({ name: '', source: '', course: '', amount: '' });
@@ -193,13 +239,14 @@ function ConversionPanel() {
   const loadAll = async () => {
     try {
       const [statsRes, leadsRes] = await Promise.all([
-        fetch('/api/conversion/stats'),
-        fetch('/api/conversion/leads'),
+        authFetch('/api/conversion/stats'),
+        authFetch('/api/conversion/leads'),
       ]);
       if (!statsRes.ok || !leadsRes.ok) throw new Error('HTTP ' + statsRes.status);
       setStats(await statsRes.json());
       setLeads(await leadsRes.json());
-    } catch {
+    } catch (err) {
+      if (isAuthError(err)) { onAuthFailure && onAuthFailure(err); return; }
       setError('加载转化数据失败');
     }
   };
@@ -211,14 +258,15 @@ function ConversionPanel() {
     if (!next) return;
     setBusy(true);
     try {
-      const res = await fetch(`/api/conversion/leads/${lead.id}/status`, {
+      const res = await authFetch(`/api/conversion/leads/${lead.id}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: next }),
       });
       if (!res.ok) throw new Error('HTTP ' + res.status);
       await loadAll();
-    } catch {
+    } catch (err) {
+      if (isAuthError(err)) { onAuthFailure && onAuthFailure(err); return; }
       setError('推进状态失败');
     } finally {
       setBusy(false);
@@ -230,7 +278,7 @@ function ConversionPanel() {
     setBusy(true);
     setError('');
     try {
-      const res = await fetch('/api/conversion/leads', {
+      const res = await authFetch('/api/conversion/leads', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -243,7 +291,8 @@ function ConversionPanel() {
       if (!res.ok) throw new Error('HTTP ' + res.status);
       setForm({ name: '', source: '', course: '', amount: '' });
       await loadAll();
-    } catch {
+    } catch (err) {
+      if (isAuthError(err)) { onAuthFailure && onAuthFailure(err); return; }
       setError('新增线索失败');
     } finally {
       setBusy(false);
@@ -368,7 +417,7 @@ function ConversionPanel() {
   );
 }
 
-function LearningPanel() {
+function LearningPanel({ onAuthFailure }) {
   const [stats, setStats] = useState(null);
   const [records, setRecords] = useState([]);
   const [form, setForm] = useState({ student: '', course: '', progress: '' });
@@ -378,13 +427,14 @@ function LearningPanel() {
   const loadAll = async () => {
     try {
       const [statsRes, recordsRes] = await Promise.all([
-        fetch('/api/learning/stats'),
-        fetch('/api/learning/records'),
+        authFetch('/api/learning/stats'),
+        authFetch('/api/learning/records'),
       ]);
       if (!statsRes.ok || !recordsRes.ok) throw new Error('HTTP ' + statsRes.status);
       setStats(await statsRes.json());
       setRecords(await recordsRes.json());
-    } catch {
+    } catch (err) {
+      if (isAuthError(err)) { onAuthFailure && onAuthFailure(err); return; }
       setError('加载培学数据失败');
     }
   };
@@ -394,14 +444,15 @@ function LearningPanel() {
   const markCompleted = async (record) => {
     setBusy(true);
     try {
-      const res = await fetch(`/api/learning/records/${record.id}/status`, {
+      const res = await authFetch(`/api/learning/records/${record.id}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: '已完成' }),
       });
       if (!res.ok) throw new Error('HTTP ' + res.status);
       await loadAll();
-    } catch {
+    } catch (err) {
+      if (isAuthError(err)) { onAuthFailure && onAuthFailure(err); return; }
       setError('标记完成失败');
     } finally {
       setBusy(false);
@@ -413,7 +464,7 @@ function LearningPanel() {
     setBusy(true);
     setError('');
     try {
-      const res = await fetch('/api/learning/records', {
+      const res = await authFetch('/api/learning/records', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -425,7 +476,8 @@ function LearningPanel() {
       if (!res.ok) throw new Error('HTTP ' + res.status);
       setForm({ student: '', course: '', progress: '' });
       await loadAll();
-    } catch {
+    } catch (err) {
+      if (isAuthError(err)) { onAuthFailure && onAuthFailure(err); return; }
       setError('新增记录失败');
     } finally {
       setBusy(false);
@@ -543,7 +595,7 @@ function LearningPanel() {
   );
 }
 
-function QaPanel() {
+function QaPanel({ onAuthFailure }) {
   const [stats, setStats] = useState(null);
   const [questions, setQuestions] = useState([]);
   const [form, setForm] = useState({ student: '', course: '', question: '' });
@@ -553,13 +605,14 @@ function QaPanel() {
   const loadAll = async () => {
     try {
       const [statsRes, questionsRes] = await Promise.all([
-        fetch('/api/qa/stats'),
-        fetch('/api/qa/questions'),
+        authFetch('/api/qa/stats'),
+        authFetch('/api/qa/questions'),
       ]);
       if (!statsRes.ok || !questionsRes.ok) throw new Error('HTTP ' + statsRes.status);
       setStats(await statsRes.json());
       setQuestions(await questionsRes.json());
-    } catch {
+    } catch (err) {
+      if (isAuthError(err)) { onAuthFailure && onAuthFailure(err); return; }
       setError('加载答疑数据失败');
     }
   };
@@ -571,14 +624,15 @@ function QaPanel() {
     if (!next) return;
     setBusy(true);
     try {
-      const res = await fetch(`/api/qa/questions/${question.id}/status`, {
+      const res = await authFetch(`/api/qa/questions/${question.id}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: next }),
       });
       if (!res.ok) throw new Error('HTTP ' + res.status);
       await loadAll();
-    } catch {
+    } catch (err) {
+      if (isAuthError(err)) { onAuthFailure && onAuthFailure(err); return; }
       setError('推进状态失败');
     } finally {
       setBusy(false);
@@ -590,7 +644,7 @@ function QaPanel() {
     setBusy(true);
     setError('');
     try {
-      const res = await fetch('/api/qa/questions', {
+      const res = await authFetch('/api/qa/questions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -602,7 +656,8 @@ function QaPanel() {
       if (!res.ok) throw new Error('HTTP ' + res.status);
       setForm({ student: '', course: '', question: '' });
       await loadAll();
-    } catch {
+    } catch (err) {
+      if (isAuthError(err)) { onAuthFailure && onAuthFailure(err); return; }
       setError('新增问题失败');
     } finally {
       setBusy(false);
@@ -717,7 +772,7 @@ function QaPanel() {
   );
 }
 
-function DataPanel() {
+function DataPanel({ onAuthFailure }) {
   const [summary, setSummary] = useState(null);
   const [records, setRecords] = useState([]);
   const [form, setForm] = useState({ date: '', newLeads: '', revenue: '', activeStudents: '' });
@@ -727,13 +782,14 @@ function DataPanel() {
   const loadAll = async () => {
     try {
       const [summaryRes, recordsRes] = await Promise.all([
-        fetch('/api/data/summary'),
-        fetch('/api/data/series'),
+        authFetch('/api/data/summary'),
+        authFetch('/api/data/series'),
       ]);
       if (!summaryRes.ok || !recordsRes.ok) throw new Error('HTTP ' + summaryRes.status);
       setSummary(await summaryRes.json());
       setRecords(await recordsRes.json());
-    } catch {
+    } catch (err) {
+      if (isAuthError(err)) { onAuthFailure && onAuthFailure(err); return; }
       setError('加载数据看板失败');
     }
   };
@@ -745,7 +801,7 @@ function DataPanel() {
     setBusy(true);
     setError('');
     try {
-      const res = await fetch('/api/data/series', {
+      const res = await authFetch('/api/data/series', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -758,7 +814,8 @@ function DataPanel() {
       if (!res.ok) throw new Error('HTTP ' + res.status);
       setForm({ date: '', newLeads: '', revenue: '', activeStudents: '' });
       await loadAll();
-    } catch {
+    } catch (err) {
+      if (isAuthError(err)) { onAuthFailure && onAuthFailure(err); return; }
       setError('新增记录失败');
     } finally {
       setBusy(false);
@@ -870,6 +927,23 @@ const styles = {
   },
   header: {
     marginBottom: 28,
+  },
+  headerRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 16,
+  },
+  logoutBtn: {
+    padding: '8px 18px',
+    borderRadius: 6,
+    border: '1px solid #e2e8f0',
+    background: '#ffffff',
+    color: '#ef4444',
+    fontSize: 13,
+    fontWeight: 500,
+    cursor: 'pointer',
+    whiteSpace: 'nowrap',
   },
   title: {
     margin: 0,
