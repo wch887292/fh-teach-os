@@ -79,14 +79,17 @@ export default function App() {
       {tab === '总览' ? (
         <>
           <div style={styles.statusBar}>
-            <span style={{
-              display: 'inline-block',
-              width: 8,
-              height: 8,
-              borderRadius: '50%',
-              marginRight: 6,
-              background: connected ? '#22c55e' : connected === false ? '#ef4444' : '#94a3b8',
-            }} />
+            <span style={styles.statusDot(connected)}>
+              <span
+                style={{
+                  display: 'inline-block',
+                  width: 8,
+                  height: 8,
+                  borderRadius: '50%',
+                  marginRight: 6,
+                  background: connected ? '#22c55e' : connected === false ? '#ef4444' : '#94a3b8',
+                }}
+              />
               后端{connected ? '已连接' : connected === false ? '未连接' : '检测中…'}
             </span>
           </div>
@@ -550,6 +553,13 @@ const styles = {
     fontSize: 13,
     color: '#64748b',
   },
+  statusDot: (connected) => ({
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 6,
+    fontSize: 13,
+    color: connected ? '#16a34a' : connected === false ? '#dc2626' : '#64748b',
+  }),
   loading: {
     padding: 40,
     textAlign: 'center',
