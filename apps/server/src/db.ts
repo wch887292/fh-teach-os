@@ -159,3 +159,15 @@ seedIfEmpty('series', 'id', [
   `INSERT OR IGNORE INTO series (id, date, newLeads, revenue, activeStudents) VALUES (6, '2026-10-06', 9, 27500, 79)`,
   `INSERT OR IGNORE INTO series (id, date, newLeads, revenue, activeStudents) VALUES (7, '2026-10-07', 14, 38000, 95)`,
 ]);
+
+// ── 公共底座：审计日志表 ────────────────────────────────────────────────
+db.exec(`
+  CREATE TABLE IF NOT EXISTS audit_logs (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts         TEXT DEFAULT (datetime('now')),
+    method     TEXT,
+    path       TEXT,
+    status     INTEGER,
+    durationMs REAL
+  );
+`);
