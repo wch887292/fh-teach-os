@@ -80,6 +80,12 @@ export default function App() {
         >
           培学板块
         </button>
+        <button
+          style={{ ...styles.tabBtn, ...(tab === '数据看板' ? styles.tabActive : {}) }}
+          onClick={() => setTab('数据看板')}
+        >
+          数据看板
+        </button>
       </nav>
 
       {tab === '总览' ? (
@@ -139,6 +145,8 @@ export default function App() {
         <ConversionPanel />
       ) : tab === '答疑板块' ? (
         <QaPanel />
+      ) : tab === '数据看板' ? (
+        <DataPanel />
       ) : (
         <LearningPanel />
       )}
@@ -686,6 +694,149 @@ function QaPanel() {
   );
 }
 
+function DataPanel() {
+  const [summary, setSummary] = useState(null);
+  const [records, setRecords] = useState([]);
+  const [form, setForm] = useState({ date: '', newLeads: '', revenue: '', activeStudents: '' });
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const loadAll = async () => {
+    try {
+      const [summaryRes, recordsRes] = await Promise.all([
+        fetch('/api/data/summary'),
+        fetch('/api/data/series'),
+      ]);
+      if (!summaryRes.ok || !recordsRes.ok) throw new Error('HTTP ' + summaryRes.status);
+      setSummary(await summaryRes.json());
+      setRecords(await recordsRes.json());
+    } catch {
+      setError('加载数据看板失败');
+    }
+  };
+
+  useEffect(() => { loadAll(); }, []);
+
+  const submitRecord = async (e) => {
+    e.preventDefault();
+    setBusy(true);
+    setError('');
+    try {
+      const res = await fetch('/api/data/series', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          date: form.date,
+          newLeads: Number(form.newLeads),
+          revenue: Number(form.revenue),
+          activeStudents: Number(form.activeStudents),
+        }),
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      setForm({ date: '', newLeads: '', revenue: '', activeStudents: '' });
+      await loadAll();
+    } catch {
+      setError('新增记录失败');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const statItems = [
+    { label: '记录天数', value: summary?.totalDays ?? 0 },
+    { label: '新线索合计', value: summary?.totalLeads ?? 0 },
+    { label: '收入合计', value: `¥${(summary?.totalRevenue ?? 0).toLocaleString()}` },
+    { label: '日均活跃', value: summary?.avgActiveStudents ?? 0 },
+  ];
+
+  return (
+    <div>
+      <div style={styles.statsRow4}>
+        {statItems.map((s) => (
+          <div key={s.label} style={styles.statCard}>
+            <div style={styles.statValue}>{s.value}</div>
+            <div style={styles.statLabel}>{s.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {error && <div style={styles.error}>{error}</div>}
+
+      <div style={styles.tableWrap}>
+        <table style={styles.table}>
+          <thead>
+            <tr>
+              <th style={styles.th}>日期</th>
+              <th style={styles.th}>新线索</th>
+              <th style={styles.th}>收入</th>
+              <th style={styles.th}>活跃学员</th>
+            </tr>
+          </thead>
+          <tbody>
+            {records.map((r) => (
+              <tr key={r.id} style={styles.tr}>
+                <td style={styles.td}>{r.date}</td>
+                <td style={styles.td}>{r.newLeads}</td>
+                <td style={styles.td}>¥{r.revenue.toLocaleString()}</td>
+                <td style={styles.td}>{r.activeStudents}</td>
+              </tr>
+            ))}
+            {records.length === 0 && (
+              <tr>
+                <td colSpan={4} style={styles.td}>暂无数据</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <form style={styles.form} onSubmit={submitRecord}>
+        <h3 style={styles.formTitle}>新增记录</h3>
+        <div style={styles.formRow}>
+          <input
+            style={styles.input}
+            placeholder="日期"
+            type="date"
+            value={form.date}
+            onChange={(e) => setForm({ ...form, date: e.target.value })}
+            required
+          />
+          <input
+            style={styles.input}
+            placeholder="新线索"
+            type="number"
+            min="0"
+            value={form.newLeads}
+            onChange={(e) => setForm({ ...form, newLeads: e.target.value })}
+            required
+          />
+          <input
+            style={styles.input}
+            placeholder="收入"
+            type="number"
+            min="0"
+            value={form.revenue}
+            onChange={(e) => setForm({ ...form, revenue: e.target.value })}
+            required
+          />
+          <input
+            style={styles.input}
+            placeholder="活跃学员"
+            type="number"
+            min="0"
+            value={form.activeStudents}
+            onChange={(e) => setForm({ ...form, activeStudents: e.target.value })}
+            required
+          />
+          <button type="submit" style={styles.submitBtn} disabled={busy}>
+            提交
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 const styles = {
   page: {
     fontFamily: "'PingFang SC', 'Microsoft YaHei', sans-serif",
@@ -802,6 +953,12 @@ const styles = {
   statsRow5: {
     display: 'grid',
     gridTemplateColumns: 'repeat(5, 1fr)',
+    gap: 12,
+    marginBottom: 20,
+  },
+  statsRow4: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(4, 1fr)',
     gap: 12,
     marginBottom: 20,
   },
