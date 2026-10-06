@@ -171,3 +171,36 @@ db.exec(`
     durationMs REAL
   );
 `);
+
+// ── 登录鉴权：租户表 ────────────────────────────────────────────────────
+db.exec(`
+  CREATE TABLE IF NOT EXISTS tenants (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    name      TEXT NOT NULL UNIQUE,
+    status    TEXT DEFAULT '启用中',
+    createdAt TEXT DEFAULT (datetime('now'))
+  );
+`);
+
+seedIfEmpty('tenants', 'id', [
+  `INSERT OR IGNORE INTO tenants (id, name) VALUES (1, '飞虹智总部')`,
+]);
+
+// ── 登录鉴权：用户表 ────────────────────────────────────────────────────
+db.exec(`
+  CREATE TABLE IF NOT EXISTS users (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenantId     INTEGER NOT NULL,
+    username     TEXT NOT NULL UNIQUE,
+    passwordHash TEXT NOT NULL,
+    role         TEXT DEFAULT 'sales',
+    status       TEXT DEFAULT '启用中',
+    createdAt    TEXT DEFAULT (datetime('now'))
+  );
+`);
+
+// 开发种子密码：admin / Admin@2026（bcryptjs cost 10 加密）
+// ⚠️ 正式部署必须修改密码或重新生成 hash，勿将 seed hash 用于生产环境
+seedIfEmpty('users', 'id', [
+  `INSERT OR IGNORE INTO users (id, tenantId, username, passwordHash, role) VALUES (1, 1, 'admin', '$2b$10$9MBtPUkZXRt4HvHdou0MrOTrrTDWrMfS4NJzPgKxFVO49QihB54pa', 'admin')`,
+]);
