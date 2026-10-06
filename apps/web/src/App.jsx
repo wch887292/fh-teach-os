@@ -74,6 +74,12 @@ export default function App() {
         >
           答疑板块
         </button>
+        <button
+          style={{ ...styles.tabBtn, ...(tab === '培学板块' ? styles.tabActive : {}) }}
+          onClick={() => setTab('培学板块')}
+        >
+          培学板块
+        </button>
       </nav>
 
       {tab === '总览' ? (
@@ -131,8 +137,10 @@ export default function App() {
         </>
       ) : tab === '转化板块' ? (
         <ConversionPanel />
-      ) : (
+      ) : tab === '答疑板块' ? (
         <QaPanel />
+      ) : (
+        <LearningPanel />
       )}
 
       <footer style={styles.footer}>
@@ -319,6 +327,181 @@ function ConversionPanel() {
             type="number"
             value={form.amount}
             onChange={(e) => setForm({ ...form, amount: e.target.value })}
+          />
+          <button type="submit" style={styles.submitBtn} disabled={busy}>
+            提交
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function LearningPanel() {
+  const [stats, setStats] = useState(null);
+  const [records, setRecords] = useState([]);
+  const [form, setForm] = useState({ student: '', course: '', progress: '' });
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const loadAll = async () => {
+    try {
+      const [statsRes, recordsRes] = await Promise.all([
+        fetch('/api/learning/stats'),
+        fetch('/api/learning/records'),
+      ]);
+      if (!statsRes.ok || !recordsRes.ok) throw new Error('HTTP ' + statsRes.status);
+      setStats(await statsRes.json());
+      setRecords(await recordsRes.json());
+    } catch {
+      setError('加载培学数据失败');
+    }
+  };
+
+  useEffect(() => { loadAll(); }, []);
+
+  const markCompleted = async (record) => {
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/learning/records/${record.id}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: '已完成' }),
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      await loadAll();
+    } catch {
+      setError('标记完成失败');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const submitRecord = async (e) => {
+    e.preventDefault();
+    setBusy(true);
+    setError('');
+    try {
+      const res = await fetch('/api/learning/records', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          student: form.student,
+          course: form.course,
+          progress: form.progress === '' ? undefined : Number(form.progress),
+        }),
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      setForm({ student: '', course: '', progress: '' });
+      await loadAll();
+    } catch {
+      setError('新增记录失败');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const statItems = [
+    { label: '学员总数', value: stats?.total ?? 0 },
+    { label: '记录总数', value: stats?.total ?? 0 },
+    { label: '学习中', value: stats?.byStatus?.['学习中'] ?? 0 },
+    { label: '已完成', value: stats?.byStatus?.['已完成'] ?? 0 },
+    { label: '平均进度', value: `${stats?.avgProgress ?? 0}%` },
+  ];
+
+  const statusColors = {
+    '学习中': { bg: '#eff6ff', color: '#1d4ed8' },
+    '已完成': { bg: '#dcfce7', color: '#166534' },
+    '已暂停': { bg: '#fef3c7', color: '#92400e' },
+  };
+
+  return (
+    <div>
+      <div style={styles.statsRow5}>
+        {statItems.map((s) => (
+          <div key={s.label} style={styles.statCard}>
+            <div style={styles.statValue}>{s.value}</div>
+            <div style={styles.statLabel}>{s.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {error && <div style={styles.error}>{error}</div>}
+
+      <div style={styles.tableWrap}>
+        <table style={styles.table}>
+          <thead>
+            <tr>
+              <th style={styles.th}>学生</th>
+              <th style={styles.th}>课程</th>
+              <th style={styles.th}>进度</th>
+              <th style={styles.th}>状态</th>
+              <th style={styles.th}>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {records.map((record) => {
+              const sc = statusColors[record.status] || { bg: '#f1f5f9', color: '#475569' };
+              const showCompleteBtn = record.status === '学习中';
+              return (
+                <tr key={record.id} style={styles.tr}>
+                  <td style={styles.td}>{record.student}</td>
+                  <td style={styles.td}>{record.course}</td>
+                  <td style={styles.td}>{record.progress}%</td>
+                  <td style={styles.td}>
+                    <span style={{ ...styles.statusBadge, background: sc.bg, color: sc.color }}>
+                      {record.status}
+                    </span>
+                  </td>
+                  <td style={styles.td}>
+                    {showCompleteBtn ? (
+                      <button
+                        style={styles.advanceBtn}
+                        onClick={() => markCompleted(record)}
+                        disabled={busy}
+                      >
+                        标记完成
+                      </button>
+                    ) : (
+                      <span style={styles.actionPlaceholder}>—</span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+            {records.length === 0 && (
+              <tr>
+                <td colSpan={5} style={styles.td}>暂无记录</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <form style={styles.form} onSubmit={submitRecord}>
+        <h3 style={styles.formTitle}>新增记录</h3>
+        <div style={styles.formRow}>
+          <input
+            style={styles.input}
+            placeholder="学生"
+            value={form.student}
+            onChange={(e) => setForm({ ...form, student: e.target.value })}
+            required
+          />
+          <input
+            style={styles.input}
+            placeholder="课程"
+            value={form.course}
+            onChange={(e) => setForm({ ...form, course: e.target.value })}
+          />
+          <input
+            style={styles.input}
+            placeholder="进度"
+            type="number"
+            min="0"
+            max="100"
+            value={form.progress}
+            onChange={(e) => setForm({ ...form, progress: e.target.value })}
           />
           <button type="submit" style={styles.submitBtn} disabled={busy}>
             提交
@@ -616,9 +799,9 @@ const styles = {
     gap: 12,
     marginBottom: 20,
   },
-  statsRow4: {
+  statsRow5: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(4, 1fr)',
+    gridTemplateColumns: 'repeat(5, 1fr)',
     gap: 12,
     marginBottom: 20,
   },
