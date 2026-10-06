@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import AcquisitionPanel from './AcquisitionPanel';
+import CoursePanel from './CoursePanel';
 
 const MODULE_META = {
   acquisition: { name: '获课', description: '招生获客、线索管理', online: true },
@@ -18,6 +20,11 @@ const getNextConversionStatus = (current) => {
 const getNextQaStatus = (current) => {
   if (current === '待回复') return '处理中';
   if (current === '处理中') return '已解决';
+  return null;
+};
+
+const getNextChannelStatus = (current) => {
+  if (current === '启用中') return '已停用';
   return null;
 };
 
@@ -57,6 +64,18 @@ export default function App() {
 
       <nav style={styles.tabs}>
         <button
+          style={{ ...styles.tabBtn, ...(tab === '获课板块' ? styles.tabActive : {}) }}
+          onClick={() => setTab('获课板块')}
+        >
+          获课板块
+        </button>
+        <button
+          style={{ ...styles.tabBtn, ...(tab === '出课板块' ? styles.tabActive : {}) }}
+          onClick={() => setTab('出课板块')}
+        >
+          出课板块
+        </button>
+        <button
           style={{ ...styles.tabBtn, ...(tab === '总览' ? styles.tabActive : {}) }}
           onClick={() => setTab('总览')}
         >
@@ -88,7 +107,11 @@ export default function App() {
         </button>
       </nav>
 
-      {tab === '总览' ? (
+      {tab === '获课板块' ? (
+        <AcquisitionPanel />
+      ) : tab === '出课板块' ? (
+        <CoursePanel />
+      ) : tab === '总览' ? (
         <>
           <div style={styles.statusBar}>
             <span style={styles.statusDot(connected)}>

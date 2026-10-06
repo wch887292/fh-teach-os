@@ -107,6 +107,49 @@ seedIfEmpty('records', 'id', [
   `INSERT OR IGNORE INTO records (id, student, course, progress, status) VALUES (6, '刘洋', 'AI 绘画入门', 20, '学习中')`,
 ]);
 
+// ── 获课板块：招生渠道表 ────────────────────────────────────────────────
+db.exec(`
+  CREATE TABLE IF NOT EXISTS channels (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    name        TEXT NOT NULL,
+    type        TEXT DEFAULT '线上',
+    investment  REAL DEFAULT 0,
+    costPerLead REAL DEFAULT 0,
+    status      TEXT DEFAULT '启用中'
+  );
+`);
+
+// ── 出课板块：课程表 ────────────────────────────────────────────────────
+db.exec(`
+  CREATE TABLE IF NOT EXISTS courses (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    name          TEXT NOT NULL,
+    teacher       TEXT,
+    price         REAL DEFAULT 0,
+    totalStudents REAL DEFAULT 0,
+    capacity      REAL DEFAULT 0,
+    status        TEXT DEFAULT '招生中'
+  );
+`);
+
+seedIfEmpty('channels', 'id', [
+  `INSERT OR IGNORE INTO channels (id, name, type, investment, costPerLead, status) VALUES (1, '抖音信息流', '线上', 50000, 120, '启用中')`,
+  `INSERT OR IGNORE INTO channels (id, name, type, investment, costPerLead, status) VALUES (2, '小红书达人合作', '线上', 35000, 95, '启用中')`,
+  `INSERT OR IGNORE INTO channels (id, name, type, investment, costPerLead, status) VALUES (3, '线下地推活动', '线下', 20000, 80, '已停用')`,
+  `INSERT OR IGNORE INTO channels (id, name, type, investment, costPerLead, status) VALUES (4, '老学员转介绍', '推荐', 10000, 40, '启用中')`,
+  `INSERT OR IGNORE INTO channels (id, name, type, investment, costPerLead, status) VALUES (5, '百度竞价广告', '线上', 45000, 150, '已停用')`,
+  `INSERT OR IGNORE INTO channels (id, name, type, investment, costPerLead, status) VALUES (6, '高校社团合作', '线下', 15000, 60, '启用中')`,
+]);
+
+seedIfEmpty('courses', 'id', [
+  `INSERT OR IGNORE INTO courses (id, name, teacher, price, totalStudents, capacity, status) VALUES (1, 'Python 实战营', '张老师', 6999, 28, 40, '招生中')`,
+  `INSERT OR IGNORE INTO courses (id, name, teacher, price, totalStudents, capacity, status) VALUES (2, 'AI 绘画入门', '李老师', 1299, 40, 40, '已满')`,
+  `INSERT OR IGNORE INTO courses (id, name, teacher, price, totalStudents, capacity, status) VALUES (3, '数据分析进阶', '王老师', 4999, 18, 30, '招生中')`,
+  `INSERT OR IGNORE INTO courses (id, name, teacher, price, totalStudents, capacity, status) VALUES (4, '全栈开发精英班', '赵老师', 12999, 45, 45, '已满')`,
+  `INSERT OR IGNORE INTO courses (id, name, teacher, price, totalStudents, capacity, status) VALUES (5, '少儿编程启蒙', '陈老师', 2999, 50, 50, '已结课')`,
+  `INSERT OR IGNORE INTO courses (id, name, teacher, price, totalStudents, capacity, status) VALUES (6, '前端工程化实战', '刘老师', 5999, 12, 35, '招生中')`,
+]);
+
 seedIfEmpty('series', 'id', [
   `INSERT OR IGNORE INTO series (id, date, newLeads, revenue, activeStudents) VALUES (1, '2026-10-01', 12, 35000, 86)`,
   `INSERT OR IGNORE INTO series (id, date, newLeads, revenue, activeStudents) VALUES (2, '2026-10-02', 8, 22000, 74)`,

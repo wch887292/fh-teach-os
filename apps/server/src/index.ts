@@ -3,6 +3,8 @@ import { conversionRouter } from './modules/conversion';
 import { qaRouter } from './modules/qa';
 import { learningRouter } from './modules/learning';
 import { dataRouter } from './modules/data';
+import { acquisitionRouter } from './modules/acquisition';
+import { courseRouter } from './modules/course';
 
 const app = express();
 const port = 8801;
@@ -12,6 +14,8 @@ app.use('/api/conversion', conversionRouter);
 app.use('/api/qa', qaRouter);
 app.use('/api/learning', learningRouter);
 app.use('/api/data', dataRouter);
+app.use('/api/acquisition', acquisitionRouter);
+app.use('/api/course', courseRouter);
 
 app.get('/api/health', (req, res) => {
   res.json({ ok: true, service: 'teach-os' });
