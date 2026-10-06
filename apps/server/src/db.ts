@@ -199,8 +199,25 @@ db.exec(`
   );
 `);
 
-// 开发种子密码：admin / Admin@2026（bcryptjs cost 10 加密）
+// 开发种子密码（bcryptjs cost 10 硬编码 hash）：
+// admin / Admin@2026（role=admin）、sales01 / Sales@2026（role=sales）、teacher01 / Teacher@2026（role=teacher）
 // ⚠️ 正式部署必须修改密码或重新生成 hash，勿将 seed hash 用于生产环境
-seedIfEmpty('users', 'id', [
-  `INSERT OR IGNORE INTO users (id, tenantId, username, passwordHash, role) VALUES (1, 1, 'admin', '$2b$10$9MBtPUkZXRt4HvHdou0MrOTrrTDWrMfS4NJzPgKxFVO49QihB54pa', 'admin')`,
-]);
+// 按 username 逐条 ensure：不存在才插入，避免已有 seed 时重复写入
+const seedUsers: Array<{ tenantId: number; username: string; passwordHash: string; role: string }> = [
+  { tenantId: 1, username: 'admin',     passwordHash: '$2b$10$k.ikp/iuz98q5tG7UviHRuFdZ3a8Gn2bbpme2x6cYwB6R8vL2ZQOG', role: 'admin' },
+  { tenantId: 1, username: 'sales01',   passwordHash: '$2b$10$q.43RMn/cn.Rg74FueOAPOSBmGD6NYUeZdhMR0JugLm04Gj3aZRQK', role: 'sales' },
+  { tenantId: 1, username: 'teacher01', passwordHash: '$2b$10$NaiT.PifbDyDboRBhmAX6evLIayobwls4JT20scmnH2Bc.Ka2V5UG', role: 'teacher' },
+];
+for (const seed of seedUsers) {
+  const exists = db
+    .prepare('SELECT 1 FROM users WHERE username = ?')
+    .get(seed.username) as unknown as { 1: 1 } | undefined;
+  if (!exists) {
+    db.prepare('INSERT INTO users (tenantId, username, passwordHash, role) VALUES (?, ?, ?, ?)').run(
+      seed.tenantId,
+      seed.username,
+      seed.passwordHash,
+      seed.role,
+    );
+  }
+}

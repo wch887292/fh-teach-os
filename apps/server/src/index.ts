@@ -8,6 +8,8 @@ import { courseRouter } from './modules/course';
 import { authRouter } from './modules/auth';
 import { auditMiddleware, auditRouter } from './middleware/audit';
 import { riskMiddleware } from './middleware/risk';
+import { authMiddleware, requireRole } from './middleware/auth';
+import { authMiddleware, requireRole } from './middleware/auth';
 
 // ── 启动校验：JWT_SECRET 必须设置，secret 不入库不入 git ────────────────
 if (!process.env.JWT_SECRET) {
@@ -22,10 +24,12 @@ app.use(express.json());
 // 公共底座：先限流，再审计（顺序固定 risk → audit）
 app.use(riskMiddleware);
 app.use(auditMiddleware);
-// 审计日志查询路由
-app.use('/api/audit', auditRouter);
-// 登录鉴权路由
+// 登录鉴权路由（/login 与 /me 由 authRouter 内部自行校验，不走全量保护）
 app.use('/api/auth', authRouter);
+// 审计日志查询路由：须先通过 JWT 认证，再限制仅 admin 可查
+app.use('/api/audit', authMiddleware, requireRole(['admin']), auditRouter);
+// JWT 全量保护：登录鉴权与审计之后、六板块之前挂载
+app.use(authMiddleware);
 // 现有六板块路由
 app.use('/api/conversion', conversionRouter);
 app.use('/api/qa', qaRouter);
