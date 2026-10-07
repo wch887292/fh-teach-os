@@ -99,3 +99,49 @@ export function requireRole(roles: string[]) {
     next();
   };
 }
+
+/**
+ * teacherRoleGuard — 教师角色细粒度权限守卫（阶段5-2）。
+ * 只对 role === 'teacher' 的用户生效；admin / sales 直接放行，行为完全不变。
+ *
+ * 权限矩阵（teacher 角色）：
+ * - course（出课）：GET 放行，POST / PATCH / DELETE 等写方法 403
+ * - qa（答疑）：GET 放行，写方法 403
+ * - learning（培学）：GET 放行 + PATCH 额外放行（进度更新），其余写方法 403
+ * - conversion（转化）/ acquisition（获课）/ data（数据看板）：任何方法一律 403
+ *
+ * 403 响应体统一为 JSON，带 error 字段说明无权限。
+ */
+export function teacherRoleGuard(allowedRead: boolean, allowTeacherPatch: boolean) {
+  return function teacherGuard(req: Request, res: Response, next: NextFunction): void {
+    const role = req.auth?.role;
+    // 非 teacher 角色（admin / sales）不受本中间件约束，保持原有全放行行为
+    if (role !== 'teacher') {
+      next();
+      return;
+    }
+
+    const method = (req.method || 'GET').toUpperCase();
+    const isGet = method === 'GET' || method === 'HEAD';
+    const isPatch = method === 'PATCH';
+
+    if (isGet) {
+      // 读权限：仅 course / qa / learning 板块允许 teacher 读取
+      if (allowedRead) {
+        next();
+        return;
+      }
+      res.status(403).json({ error: '教师角色无权限访问该板块' });
+      return;
+    }
+
+    if (isPatch && allowTeacherPatch) {
+      // 培学板块额外放行 teacher 的 PATCH（进度更新）
+      next();
+      return;
+    }
+
+    // 写方法（POST / PUT / DELETE / 未放行的 PATCH）一律 403
+    res.status(403).json({ error: '教师角色无权限执行该操作' });
+  };
+}

@@ -8,7 +8,7 @@ import { courseRouter } from './modules/course';
 import { authRouter } from './modules/auth';
 import { auditMiddleware, auditRouter } from './middleware/audit';
 import { riskMiddleware } from './middleware/risk';
-import { authMiddleware, requireRole } from './middleware/auth';
+import { authMiddleware, requireRole, teacherRoleGuard } from './middleware/auth';
 
 // ── 启动校验：JWT_SECRET 必须设置，secret 不入库不入 git ────────────────
 if (!process.env.JWT_SECRET) {
@@ -29,13 +29,19 @@ app.use('/api/auth', authRouter);
 app.use('/api/audit', authMiddleware, requireRole(['admin']), auditRouter);
 // JWT 全量保护：登录鉴权与审计之后、六板块之前挂载
 app.use(authMiddleware);
-// 现有六板块路由
-app.use('/api/conversion', conversionRouter);
-app.use('/api/qa', qaRouter);
-app.use('/api/learning', learningRouter);
-app.use('/api/data', dataRouter);
-app.use('/api/acquisition', acquisitionRouter);
-app.use('/api/course', courseRouter);
+// 六板块路由（teacher 角色细粒度权限：阶段5-2）
+// conversion / acquisition / data：teacher 任何方法一律 403
+app.use('/api/conversion', teacherRoleGuard(false, false), conversionRouter);
+// qa（答疑）：teacher 仅 GET 读放行，写方法 403
+app.use('/api/qa', teacherRoleGuard(true, false), qaRouter);
+// learning（培学）：teacher GET 读放行 + PATCH 进度更新放行
+app.use('/api/learning', teacherRoleGuard(true, true), learningRouter);
+// data（数据看板）：teacher 任何方法一律 403
+app.use('/api/data', teacherRoleGuard(false, false), dataRouter);
+// acquisition（获课）：teacher 任何方法一律 403
+app.use('/api/acquisition', teacherRoleGuard(false, false), acquisitionRouter);
+// course（出课）：teacher 仅 GET 读放行，写方法 403
+app.use('/api/course', teacherRoleGuard(true, false), courseRouter);
 
 app.get('/api/health', (req, res) => {
   res.json({ ok: true, service: 'teach-os' });
