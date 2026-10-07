@@ -32,8 +32,10 @@ userAdminRouter.get('/users', (req, res) => {
     .prepare('SELECT id, username, role, tenantId, status FROM users')
     .all() as unknown as Record<string, unknown>[];
   
+  // 「启用」归一化为「启用中」再过滤（库里正常用户存的是 '启用中'）
+  const filterStatus = validStatus === '启用' ? '启用中' : validStatus;
   if (validStatus) {
-    res.json(rows.filter((row) => row.status === validStatus));
+    res.json(rows.filter((row) => row.status === filterStatus));
   } else {
     res.json(rows.map(publicUserView));
   }
@@ -133,8 +135,10 @@ userAdminRouter.patch('/users/:id/status', (req, res) => {
     return;
   }
   
-  // 更新用户状态
-  db.prepare('UPDATE users SET status = ? WHERE id = ?').run(status, id);
+  // 更新用户状态（「启用」归一化为「启用中」，与 login 判据 user.status !== '启用中' 对齐，
+  // 否则停用后重新启用的用户会因 status='启用' 被永久 403）
+  const normalizedStatus = status === '启用' ? '启用中' : '停用';
+  db.prepare('UPDATE users SET status = ? WHERE id = ?').run(normalizedStatus, id);
   
   // 返回更新后用户对象
   const updatedUser = db
