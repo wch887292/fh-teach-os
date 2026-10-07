@@ -31,12 +31,44 @@ const getNextChannelStatus = (current) => {
   return null;
 };
 
+// 各板块 tab 标签，与 MODULE_META 的 key 对应
+const TAB_LABELS = [
+  { key: 'acquisition', label: '获课板块' },
+  { key: 'course', label: '出课板块' },
+  { key: 'conversion', label: '转化板块' },
+  { key: 'qa', label: '答疑板块' },
+  { key: 'learning', label: '培学板块' },
+  { key: 'data', label: '数据看板' },
+];
+
+// teacher 角色可见的板块 key（出课 / 答疑 / 培学），其余角色显示全部
+const TEACHER_VISIBLE = ['course', 'qa', 'learning'];
+
+// 按角色返回可见板块 key 列表
+function getVisibleKeys(role) {
+  if (role === 'teacher') return TEACHER_VISIBLE;
+  return TAB_LABELS.map((t) => t.key);
+}
+
 export default function App() {
   const [loggedIn, setLoggedIn] = useState(() => Boolean(getToken()));
   const [tab, setTab] = useState('总览');
   const [modules, setModules] = useState([]);
   const [connected, setConnected] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [role, setRole] = useState('');
+
+  // 拉取当前用户角色（GET /api/auth/me），失败静默保持空串（后续逻辑按全显处理）
+  const fetchRole = () => {
+    authFetch('/api/auth/me')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && data.user && data.user.role) {
+          setRole(data.user.role);
+        }
+      })
+      .catch(() => {});
+  };
 
   // 401 统一兜底：清 token 回登录页
   const handleAuthFailure = (err) => {
@@ -52,6 +84,7 @@ export default function App() {
 
   const handleLoginSuccess = () => {
     setLoggedIn(true);
+    fetchRole();
     // 重新拉取一次模块状态，进入主界面
     authFetch('/api/modules')
       .then((res) => {
@@ -68,6 +101,7 @@ export default function App() {
   };
 
   useEffect(() => {
+    fetchRole();
     authFetch('/api/modules')
       .then((res) => {
         if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -82,18 +116,38 @@ export default function App() {
       .finally(() => setLoading(false));
   }, []);
 
+  // 当前 tab 若被角色过滤掉，自动切到角色可见的第一个板块 tab
+  useEffect(() => {
+    if (!role) return;
+    const visibleKeys = getVisibleKeys(role);
+    const currentKey = TAB_LABELS.find((t) => t.label === tab)?.key;
+    // 总览不受过滤影响
+    if (tab === '总览' || visibleKeys.includes(currentKey)) return;
+    const firstVisible = TAB_LABELS.find((t) => visibleKeys.includes(t.key));
+    if (firstVisible) setTab(firstVisible.label);
+  }, [role, tab]);
+
   if (!loggedIn) {
     return <Login onLogin={handleLoginSuccess} />;
   }
 
+  const visibleKeys = getVisibleKeys(role || 'admin');
+
   const items = (
     modules.length > 0
-      ? modules.map((mod) => ({
-          key: typeof mod === 'string' ? mod : mod.name,
-          status: typeof mod === 'string' ? (MODULE_META[mod]?.online ? 'online' : 'planned') : mod.status,
-        }))
-      : Object.entries(MODULE_META).map(([key, meta]) => ({ key, status: meta.online ? 'online' : 'planned' }))
+      ? modules
+          .map((mod) => ({
+            key: typeof mod === 'string' ? mod : mod.name,
+            status: typeof mod === 'string' ? (MODULE_META[mod]?.online ? 'online' : 'planned') : mod.status,
+          }))
+          .filter((it) => visibleKeys.includes(it.key))
+      : Object.entries(MODULE_META)
+          .filter(([key]) => visibleKeys.includes(key))
+          .map(([key, meta]) => ({ key, status: meta.online ? 'online' : 'planned' }))
   );
+
+  // 按角色过滤可见 tab（保持原始顺序：获课、出课、总览、转化、答疑、培学、数据看板）
+  const visibleTabs = TAB_LABELS.filter((t) => visibleKeys.includes(t.key));
 
   return (
     <div style={styles.page}>
@@ -110,48 +164,42 @@ export default function App() {
       </header>
 
       <nav style={styles.tabs}>
-        <button
-          style={{ ...styles.tabBtn, ...(tab === '获课板块' ? styles.tabActive : {}) }}
-          onClick={() => setTab('获课板块')}
-        >
-          获课板块
-        </button>
-        <button
-          style={{ ...styles.tabBtn, ...(tab === '出课板块' ? styles.tabActive : {}) }}
-          onClick={() => setTab('出课板块')}
-        >
-          出课板块
-        </button>
+        {visibleTabs
+          .filter((t) => t.key === 'acquisition')
+          .map((t) => (
+            <button key={t.key}
+              style={{ ...styles.tabBtn, ...(tab === t.label ? styles.tabActive : {}) }}
+              onClick={() => setTab(t.label)}
+            >
+              {t.label}
+            </button>
+          ))}
+        {visibleTabs
+          .filter((t) => t.key === 'course')
+          .map((t) => (
+            <button key={t.key}
+              style={{ ...styles.tabBtn, ...(tab === t.label ? styles.tabActive : {}) }}
+              onClick={() => setTab(t.label)}
+            >
+              {t.label}
+            </button>
+          ))}
         <button
           style={{ ...styles.tabBtn, ...(tab === '总览' ? styles.tabActive : {}) }}
           onClick={() => setTab('总览')}
         >
           总览
         </button>
-        <button
-          style={{ ...styles.tabBtn, ...(tab === '转化板块' ? styles.tabActive : {}) }}
-          onClick={() => setTab('转化板块')}
-        >
-          转化板块
-        </button>
-        <button
-          style={{ ...styles.tabBtn, ...(tab === '答疑板块' ? styles.tabActive : {}) }}
-          onClick={() => setTab('答疑板块')}
-        >
-          答疑板块
-        </button>
-        <button
-          style={{ ...styles.tabBtn, ...(tab === '培学板块' ? styles.tabActive : {}) }}
-          onClick={() => setTab('培学板块')}
-        >
-          培学板块
-        </button>
-        <button
-          style={{ ...styles.tabBtn, ...(tab === '数据看板' ? styles.tabActive : {}) }}
-          onClick={() => setTab('数据看板')}
-        >
-          数据看板
-        </button>
+        {visibleTabs
+          .filter((t) => !['acquisition', 'course'].includes(t.key))
+          .map((t) => (
+            <button key={t.key}
+              style={{ ...styles.tabBtn, ...(tab === t.label ? styles.tabActive : {}) }}
+              onClick={() => setTab(t.label)}
+            >
+              {t.label}
+            </button>
+          ))}
       </nav>
 
       {tab === '获课板块' ? (
