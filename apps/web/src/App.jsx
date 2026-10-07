@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import AcquisitionPanel from './AcquisitionPanel';
 import CoursePanel from './CoursePanel';
+import DashboardChart from './DashboardChart';
 import Login from './Login';
 import { authFetch, clearToken, isAuthError, getToken } from './api';
 
@@ -841,6 +842,8 @@ function DataPanel({ onAuthFailure }) {
       </div>
 
       {error && <div style={styles.error}>{error}</div>}
+
+      <DashboardChart records={records} />
 
       <div style={styles.tableWrap}>
         <table style={styles.table}>
