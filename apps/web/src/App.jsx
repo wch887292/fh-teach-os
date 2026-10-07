@@ -122,8 +122,9 @@ export default function App() {
     if (!role) return;
     const visibleKeys = getVisibleKeys(role);
     const currentKey = TAB_LABELS.find((t) => t.label === tab)?.key;
-    // 总览不受过滤影响
-    if (tab === '总览' || visibleKeys.includes(currentKey)) return;
+    // 板块体系外的 tab（总览、审计日志等）不受角色过滤影响
+    if (currentKey === undefined) return;
+    if (visibleKeys.includes(currentKey)) return;
     const firstVisible = TAB_LABELS.find((t) => visibleKeys.includes(t.key));
     if (firstVisible) setTab(firstVisible.label);
   }, [role, tab]);
