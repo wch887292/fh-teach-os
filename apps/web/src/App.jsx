@@ -5,6 +5,7 @@ import DashboardChart from './DashboardChart';
 import Login from './Login';
 import AuditPanel from './AuditPanel';
 import UserPanel from './UserPanel';
+import DataOpsPanel from './DataOpsPanel';
 import { authFetch, clearToken, isAuthError, getToken } from './api';
 
 const MODULE_META = {
@@ -221,6 +222,15 @@ export default function App() {
             用户管理
           </button>
         )}
+        {role === 'admin' && (
+          <button
+            key="dataOps"
+            style={{ ...styles.tabBtn, ...(tab === '数据管理' ? styles.tabActive : {}) }}
+            onClick={() => setTab('数据管理')}
+          >
+            数据管理
+          </button>
+        )}
       </nav>
 
       {tab === '获课板块' ? (
@@ -290,6 +300,8 @@ export default function App() {
         <AuditPanel onAuthFailure={handleAuthFailure} />
       ) : tab === '用户管理' ? (
         <UserPanel onAuthFailure={handleAuthFailure} />
+      ) : tab === '数据管理' ? (
+        <DataOpsPanel onAuthFailure={handleAuthFailure} />
       ) : (
         <LearningPanel onAuthFailure={handleAuthFailure} />
       )}
