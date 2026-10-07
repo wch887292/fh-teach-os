@@ -3,6 +3,7 @@ import AcquisitionPanel from './AcquisitionPanel';
 import CoursePanel from './CoursePanel';
 import DashboardChart from './DashboardChart';
 import Login from './Login';
+import AuditPanel from './AuditPanel';
 import { authFetch, clearToken, isAuthError, getToken } from './api';
 
 const MODULE_META = {
@@ -200,6 +201,15 @@ export default function App() {
               {t.label}
             </button>
           ))}
+        {role === 'admin' && (
+          <button
+            key="audit"
+            style={{ ...styles.tabBtn, ...(tab === '审计日志' ? styles.tabActive : {}) }}
+            onClick={() => setTab('审计日志')}
+          >
+            审计日志
+          </button>
+        )}
       </nav>
 
       {tab === '获课板块' ? (
@@ -265,6 +275,8 @@ export default function App() {
         <QaPanel onAuthFailure={handleAuthFailure} />
       ) : tab === '数据看板' ? (
         <DataPanel onAuthFailure={handleAuthFailure} />
+      ) : tab === '审计日志' ? (
+        <AuditPanel onAuthFailure={handleAuthFailure} />
       ) : (
         <LearningPanel onAuthFailure={handleAuthFailure} />
       )}
