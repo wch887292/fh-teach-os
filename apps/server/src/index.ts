@@ -5,7 +5,7 @@ import { learningRouter } from './modules/learning';
 import { dataRouter } from './modules/data';
 import { acquisitionRouter } from './modules/acquisition';
 import { courseRouter } from './modules/course';
-import { authRouter } from './modules/auth';
+import { authRouter, userAdminRouter } from './modules/auth';
 import { auditMiddleware, auditRouter } from './middleware/audit';
 import { riskMiddleware } from './middleware/risk';
 import { authMiddleware, requireRole, teacherRoleGuard } from './middleware/auth';
@@ -25,6 +25,8 @@ app.use(riskMiddleware);
 app.use(auditMiddleware);
 // 登录鉴权路由（/login 与 /me 由 authRouter 内部自行校验，不走全量保护）
 app.use('/api/auth', authRouter);
+// 用户管理路由（阶段6-2）：须先通过 JWT 认证，再限制仅 admin 可操作
+app.use('/api/auth', authMiddleware, requireRole(['admin']), userAdminRouter);
 // 审计日志查询路由：须先通过 JWT 认证，再限制仅 admin 可查
 app.use('/api/audit', authMiddleware, requireRole(['admin']), auditRouter);
 // JWT 全量保护：登录鉴权与审计之后、六板块之前挂载

@@ -4,6 +4,7 @@ import CoursePanel from './CoursePanel';
 import DashboardChart from './DashboardChart';
 import Login from './Login';
 import AuditPanel from './AuditPanel';
+import UserPanel from './UserPanel';
 import { authFetch, clearToken, isAuthError, getToken } from './api';
 
 const MODULE_META = {
@@ -211,6 +212,15 @@ export default function App() {
             审计日志
           </button>
         )}
+        {role === 'admin' && (
+          <button
+            key="userAdmin"
+            style={{ ...styles.tabBtn, ...(tab === '用户管理' ? styles.tabActive : {}) }}
+            onClick={() => setTab('用户管理')}
+          >
+            用户管理
+          </button>
+        )}
       </nav>
 
       {tab === '获课板块' ? (
@@ -278,6 +288,8 @@ export default function App() {
         <DataPanel onAuthFailure={handleAuthFailure} />
       ) : tab === '审计日志' ? (
         <AuditPanel onAuthFailure={handleAuthFailure} />
+      ) : tab === '用户管理' ? (
+        <UserPanel onAuthFailure={handleAuthFailure} />
       ) : (
         <LearningPanel onAuthFailure={handleAuthFailure} />
       )}
