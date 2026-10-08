@@ -102,7 +102,44 @@ dataopsRouter.get('/backups', (req, res) => {
   res.json(files);
 });
 
-// 三、GET /export/:table 导出表白名单 JSON
+// 三、POST /restore 一键还原（把指定备份覆盖回主库）
+dataopsRouter.post('/restore', (req, res) => {
+  if (!req.auth) {
+    res.status(401).json({ error: '未认证，请先登录' });
+    return;
+  }
+  const fileName = req.body?.fileName;
+  if (typeof fileName !== 'string' || fileName.trim() === '') {
+    res.status(400).json({ error: '需提供备份文件名（fileName 字段）' });
+    return;
+  }
+  // 安全校验：必须以 .db 结尾，且不能包含路径穿越字符
+  if (
+    !fileName.endsWith('.db') ||
+    fileName.includes('/') ||
+    fileName.includes('\\') ||
+    fileName.includes('..')
+  ) {
+    res.status(400).json({ error: `非法文件名：${fileName}，仅允许 .db 结尾且不含路径分隔符` });
+    return;
+  }
+  const backupPath = join(backupsDir, fileName);
+  if (!existsSync(backupPath)) {
+    res.status(404).json({ error: `备份不存在：${fileName}` });
+    return;
+  }
+  try {
+    copyFileSync(backupPath, dbPath);
+    res.status(200).json({
+      restoredFrom: fileName,
+      note: '恢复已写入磁盘，重启服务后加载新数据',
+    });
+  } catch (err) {
+    res.status(500).json({ error: '恢复失败：' + (err instanceof Error ? err.message : String(err)) });
+  }
+});
+
+// 四、GET /export/:table 导出表白名单 JSON
 dataopsRouter.get('/export/:table', (req, res) => {
   if (!req.auth) {
     res.status(401).json({ error: '未认证，请先登录' });

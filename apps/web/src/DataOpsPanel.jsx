@@ -189,6 +189,39 @@ export default function DataOpsPanel({ onAuthFailure }) {
     }
   };
 
+  const handleRestore = async (fileName) => {
+    const confirmed = window.confirm(`确认将备份 ${fileName} 还原为当前数据库？操作不可撤销。`);
+    if (!confirmed) return;
+    setBusy(true);
+    setError('');
+    setSuccess('');
+    try {
+      const res = await authFetch('/api/dataops/restore', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileName }),
+      });
+      if (!res.ok) {
+        if (res.status === 401 || res.status === 403) {
+          onAuthFailure && onAuthFailure(new Error('unauthorized'));
+          return;
+        }
+        let msg = '恢复失败';
+        try { const d = await res.json(); if (d?.error) msg = d.error; } catch {}
+        setError(msg);
+        return;
+      }
+      const data = await res.json();
+      setSuccess(`已恢复：${data.restoredFrom}，重启服务后加载新数据`);
+      await loadBackups();
+    } catch (err) {
+      if (isAuthError(err)) { onAuthFailure && onAuthFailure(err); return; }
+      setError('恢复请求失败（未连接或无权限）：' + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const handleExport = async () => {
     setError('');
     setSuccess('');
@@ -249,17 +282,27 @@ export default function DataOpsPanel({ onAuthFailure }) {
                 <th style={styles.th}>文件名</th>
                 <th style={styles.th}>大小</th>
                 <th style={styles.th}>修改时间</th>
+                <th style={styles.th}>操作</th>
               </tr>
             </thead>
             <tbody>
               {backups.length === 0 ? (
-                <tr><td colSpan={3} style={{...styles.td, ...styles.empty}}>暂无备份文件</td></tr>
+                <tr><td colSpan={4} style={{...styles.td, ...styles.empty}}>暂无备份文件</td></tr>
               ) : (
                 backups.map((b) => (
                   <tr key={b.fileName}>
                     <td style={styles.td}>{b.fileName}</td>
                     <td style={styles.td}>{formatBytes(b.sizeBytes)}</td>
                     <td style={styles.td}>{formatTime(b.mtimeMs)}</td>
+                    <td style={styles.td}>
+                      <button
+                        style={busy ? styles.btnDisabled : styles.btn}
+                        onClick={() => handleRestore(b.fileName)}
+                        disabled={busy}
+                      >
+                        恢复
+                      </button>
+                    </td>
                   </tr>
                 ))
               )}
